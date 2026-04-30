@@ -44,9 +44,9 @@ USERS = st.secrets["users"]   # List of users
 # ====================== LOGIN FUNCTION (Fixed) ======================
 def login_page():
     # Title
-    st.markdown('<h1 class="main-header">Safety Branch</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">An initiative by Safety Branch</h1>', unsafe_allow_html=True)
     st.markdown('<h1 class="main-header">Central Railway, Solapur Division</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Data-Logger Exceptional Reports Analyzer</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">Data-Logger Exceptional Reports-SUR DIVN.</p>', unsafe_allow_html=True)
 
     st.divider()
 
@@ -328,4 +328,4 @@ else:
                 type="primary"
             )
 
-    st.caption("🚄 Indian Railways - Solapur Division | Data Logger Exceptional Report Dashboard")
+    st.caption("🚄 Safety Branch, Solapur Division | Data Logger Exceptional Report Dashboard")
