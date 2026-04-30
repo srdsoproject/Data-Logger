@@ -41,30 +41,37 @@ SHEET_NAME = st.secrets["google_sheets"]["sheet_name"]
 USERS = st.secrets["users"]   # List of users
 
 # ====================== LOGIN FUNCTION ======================
+# ====================== LOGIN FUNCTION (Fixed) ======================
 def login_page():
+    # Title
     st.markdown('<h1 class="main-header">Safety Branch</h1>', unsafe_allow_html=True)
     st.markdown('<h1 class="main-header">Central Railway, Solapur Division</h1>', unsafe_allow_html=True)
     st.markdown('<p class="sub-header">Data-Logger Exceptional Reports Analyzer</p>', unsafe_allow_html=True)
 
     st.divider()
 
-    with st.container():
-        st.markdown('<div class="login-box">', unsafe_allow_html=True)
-        st.subheader("🔐 Login")
+    # Centered Login Card using Streamlit columns (more reliable than custom div)
+    col1, col2, col3 = st.columns([1, 2, 1])   # This centers the box
 
-        email = st.text_input("Email / Username", placeholder="SAFETY/SUR")
-        password = st.text_input("Password", type="password", placeholder="Enter Password")
+    with col2:
+        st.subheader("🔐 Login to Access Dashboard")
+        
+        with st.form("login_form", clear_on_submit=False):
+            email = st.text_input("Email / Username", placeholder="SAFETY/SUR", key="login_email")
+            password = st.text_input("Password", type="password", placeholder="Enter Password", key="login_password")
+            
+            submitted = st.form_submit_button("Login", type="primary", use_container_width=True)
+            
+            if submitted:
+                if email in USERS and password == USERS[email].get("password"):
+                    st.session_state.logged_in = True
+                    st.session_state.user_name = USERS[email].get("name")
+                    st.success(f"Welcome, {st.session_state.user_name}!")
+                    st.rerun()
+                else:
+                    st.error("Invalid email or password. Please try again.")
 
-        if st.button("Login", type="primary", use_container_width=True):
-            # Check against secrets
-            if email in USERS and password == USERS[email]["password"]:
-                st.session_state.logged_in = True
-                st.session_state.user_name = USERS[email]["name"]
-                st.success(f"Welcome, {USERS[email]['name']}!")
-                st.rerun()
-            else:
-                st.error("Invalid email or password. Please try again.")
-        st.markdown('</div>', unsafe_allow_html=True)
+    st.caption("🚄 Indian Railways - Solapur Division")
 
 # ====================== LOAD DATA FROM GOOGLE SHEET ======================
 @st.cache_data(ttl=300)  # Cache for 5 minutes
