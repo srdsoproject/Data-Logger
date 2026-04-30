@@ -57,7 +57,7 @@ def login_page():
         st.subheader("🔐 Login to Access Dashboard")
         
         with st.form("login_form", clear_on_submit=False):
-            email = st.text_input("Email / Username", placeholder="SAFETY/SUR", key="login_email")
+            email = st.text_input("Email / Username", placeholder="Enter ID", key="login_email")
             password = st.text_input("Password", type="password", placeholder="Enter Password", key="login_password")
             
             submitted = st.form_submit_button("Login", type="primary", use_container_width=True)
@@ -71,7 +71,6 @@ def login_page():
                 else:
                     st.error("Invalid email or password. Please try again.")
 
-    st.caption("🚄 Indian Railways - Solapur Division")
 
 # ====================== LOAD DATA FROM GOOGLE SHEET ======================
 @st.cache_data(ttl=300)  # Cache for 5 minutes
