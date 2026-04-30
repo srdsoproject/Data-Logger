@@ -138,9 +138,9 @@ else:
     }
 
     # ====================== TITLE ======================
-    st.markdown('<h1 class="main-header">Safety Branch</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">An initiative by Safety Branch</h1>', unsafe_allow_html=True)
     st.markdown('<h1 class="main-header">Central Railway, Solapur Division</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Data-Logger Exceptional Reports Analyzer</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">Data-Logger Exceptional Reports SUR DIVN.</p>', unsafe_allow_html=True)
     st.caption(f"Logged in as: **{st.session_state.user_name}**")
 
     st.divider()
