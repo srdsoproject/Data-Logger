@@ -284,31 +284,42 @@ else:
                            use_container_width=True, hide_index=True)
 
         # ====================== DOWNLOAD ======================
+        # ====================== DOWNLOAD SECTION ======================
         st.divider()
         st.subheader("📥 Download Filtered Data")
-
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            final_df = display_df.copy()
-            final_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
-
-            summary_df.to_excel(writer, index=False, sheet_name='Station_Summary')
-
-            # Auto column width
-            for sheet_name, data_df in [('Filtered_Records', final_df), ('Station_Summary', summary_df)]:
-                worksheet = writer.sheets[sheet_name]
-                for idx, col in enumerate(data_df.columns):
-                    max_len = max(data_df[col].astype(str).map(len).max(), len(str(col))) + 3
-                    worksheet.set_column(idx, idx, min(max_len, 60))
-
-        output.seek(0)
-
-        st.download_button(
-            label="⬇️ Download Filtered Report as Excel",
-            data=output.getvalue(),
-            file_name="Datalogger_Filtered_Report.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            type="primary"
-        )
+    
+        if filtered_df.empty:
+            st.warning("No data to download. Please adjust your filters.")
+        else:
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                # Main filtered data
+                final_download_df = display_df.copy()
+                final_download_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
+    
+                # Station Summary
+                summary_df = (filtered_df.groupby(COLS.get('station', 'STATION'))[COLS.get('fcount', 'FCOUNT')]
+                              .agg(Total_FCOUNT='sum', Record_Count='count')
+                              .sort_values('Total_FCOUNT', ascending=False)
+                              .reset_index())
+                
+                summary_df.to_excel(writer, index=False, sheet_name='Station_Summary')
+    
+                # Auto-adjust column widths
+                for sheet_name, data_df in [('Filtered_Records', final_download_df), ('Station_Summary', summary_df)]:
+                    worksheet = writer.sheets[sheet_name]
+                    for idx, col in enumerate(data_df.columns):
+                        max_len = max(data_df[col].astype(str).map(len).max(), len(str(col))) + 3
+                        worksheet.set_column(idx, idx, min(max_len, 60))
+    
+            output.seek(0)
+    
+            st.download_button(
+                label="⬇️ Download Filtered Report as Excel",
+                data=output.getvalue(),
+                file_name="Datalogger_Filtered_Report.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary"
+            )
 
     st.caption("🚄 Indian Railways - Solapur Division | Data Logger Exceptional Report Dashboard")
