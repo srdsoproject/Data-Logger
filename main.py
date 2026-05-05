@@ -37,8 +37,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ====================== INDIAN RAILWAYS LOGO ======================
-IR_LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/Indian_Railways_logo.svg/1200px-Indian_Railways_logo.svg.png"
+# ====================== YOUR CUSTOM INDIAN RAILWAYS LOGO ======================
+IR_LOGO_URL = "https://raw.githubusercontent.com/srdsoproject/Data-Logger/main/png-clipart-rail-transport-indian-railways-train-railway-recruitment-control-board-india-text-logo.png"
 
 # ====================== SECRETS ======================
 SHEET_ID = st.secrets["google_sheets"]["sheet_id"]
@@ -47,7 +47,7 @@ USERS = st.secrets["users"]
 
 # ====================== LOGIN PAGE ======================
 def login_page():
-    st.image(IR_LOGO_URL, width=280)
+    st.image(IR_LOGO_URL, width=320)
     st.markdown('<h1 class="dashboard-title">SAFETY BRANCH</h1>', unsafe_allow_html=True)
     st.markdown('<p class="subtitle">Central Railway • Solapur Division</p>', unsafe_allow_html=True)
     st.divider()
@@ -102,18 +102,18 @@ def refresh_data():
     st.success("✅ Data refreshed successfully from Google Sheet!")
     st.rerun()
 
-# ====================== MAIN APP ======================
+# ====================== MAIN DASHBOARD ======================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
     login_page()
 else:
-    # ====================== PROFESSIONAL HEADER ======================
-    col_logo, col_title = st.columns([1.1, 5])
+    # ====================== HEADER WITH YOUR LOGO ======================
+    col_logo, col_title = st.columns([1.2, 5])
     
     with col_logo:
-        st.image(IR_LOGO_URL, width=135)
+        st.image(IR_LOGO_URL, width=160)
     
     with col_title:
         st.markdown('<h1 class="dashboard-title">DATA LOGGER EXCEPTIONAL REPORT</h1>', unsafe_allow_html=True)
@@ -129,7 +129,7 @@ else:
         if st.button("🔄 Refresh Data", type="primary", use_container_width=True, key="sidebar_refresh"):
             refresh_data()
         st.divider()
-        st.info("Use the filters below to analyze data.")
+        st.info("Live filters are applied below.")
 
     # Load Data
     df_original = load_data_from_gsheet()
@@ -140,7 +140,7 @@ else:
     with col1:
         search_term = st.text_input(
             "🔎 Global Search (across all columns)", 
-            placeholder="Search station, error, category, date, fcount...",
+            placeholder="Search station, error, category, date...",
             key="global_search"
         )
 
@@ -152,7 +152,7 @@ else:
             mask |= filtered_df[col].astype(str).str.contains(search_term, case=False, na=False)
         filtered_df = filtered_df[mask]
 
-    # Column-wise Filters
+    # Column Filters
     filter_cols = st.columns(4)
     for i, col in enumerate(df_original.columns):
         with filter_cols[i % 4]:
@@ -185,7 +185,7 @@ else:
     col_chart, col_table = st.columns([3, 2])
     with col_chart:
         st.subheader("Top 15 Stations by FCOUNT")
-        if not filtered_df.empty and 'STATION' in filtered_df.columns and 'FCOUNT' in filtered_df.columns:
+        if not filtered_df.empty and 'STATION' in filtered_df.columns:
             top15 = filtered_df.groupby('STATION')['FCOUNT'].sum().nlargest(15).reset_index()
             fig = px.bar(top15, x='STATION', y='FCOUNT', text='FCOUNT',
                          color='FCOUNT', color_continuous_scale='RdYlGn_r')
@@ -196,31 +196,23 @@ else:
     with col_table:
         st.subheader("Station Summary")
         if not filtered_df.empty:
-            summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
-                Total_FCOUNT='sum', Records='count'
-            ).sort_values('Total_FCOUNT', ascending=False)
-            st.dataframe(
-                summary.style.format({"Total_FCOUNT": "{:,}", "Records": "{:,}"})
-                           .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
-                use_container_width=True
-            )
+            summary = filtered_df.groupby('STATION')['FCOUNT'].agg(Total_FCOUNT='sum', Records='count').sort_values('Total_FCOUNT', ascending=False)
+            st.dataframe(summary.style.format({"Total_FCOUNT": "{:,}", "Records": "{:,}"})
+                        .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'), 
+                        use_container_width=True)
 
     # ====================== DETAILED RECORDS ======================
     st.divider()
     st.subheader("📋 Detailed Records")
 
     if filtered_df.empty:
-        st.warning("No records found matching your filters.")
+        st.warning("No records found.")
     else:
         display_df = filtered_df.copy()
         if 'Date' in display_df.columns:
             display_df['Date'] = display_df['Date'].dt.date
 
-        st.dataframe(
-            display_df.style.format({"FCOUNT": "{:,}"}),
-            use_container_width=True, 
-            hide_index=True
-        )
+        st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}), use_container_width=True, hide_index=True)
 
         st.markdown("---")
 
@@ -230,7 +222,7 @@ else:
                         type="primary", use_container_width=True, key="main_refresh"):
                 refresh_data()
 
-        # ====================== DOWNLOAD ======================
+        # ====================== DOWNLOAD SECTION ======================
         with col_btn2:
             output = BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -241,7 +233,6 @@ else:
                 ).sort_values('Total_FCOUNT', ascending=False).reset_index()
                 summary_df.to_excel(writer, index=False, sheet_name='Station_Summary')
 
-                # Professional Formatting
                 for sheet_name, df_sheet in [('Filtered_Records', display_df), ('Station_Summary', summary_df)]:
                     worksheet = writer.sheets[sheet_name]
                     header_format = writer.book.add_format({
