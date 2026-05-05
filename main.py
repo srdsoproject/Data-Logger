@@ -33,11 +33,10 @@ st.markdown("""
         font-weight: 500;
         margin-top: -0.4rem;
     }
-    .logo-container {text-align: center; margin-bottom: 10px;}
 </style>
 """, unsafe_allow_html=True)
 
-# ====================== YOUR CUSTOM INDIAN RAILWAYS LOGO ======================
+# ====================== INDIAN RAILWAYS LOGO ======================
 IR_LOGO_URL = "https://raw.githubusercontent.com/srdsoproject/testing/main/Central%20Railway%20Logo.png"
 
 # ====================== SECRETS ======================
@@ -108,18 +107,14 @@ if "logged_in" not in st.session_state:
 if not st.session_state.logged_in:
     login_page()
 else:
-    # ====================== HEADER - LOGO ABOVE TITLE ======================
-    # ====================== HEADER - CENTERED LOGO ======================
-    # ====================== CENTERED LOGO ======================
+    # ====================== HEADER ======================
     col1, col2, col3 = st.columns([3, 3, 1])
     with col2:
         st.image(IR_LOGO_URL, width=220)
 
     st.markdown('<h1 class="dashboard-title">DATA LOGGER EXCEPTIONAL REPORT</h1>', unsafe_allow_html=True)
     st.markdown('<p class="subtitle">Central Railway • Solapur Division • Safety Branch</p>', unsafe_allow_html=True)
-
     st.caption(f"**Logged in as:** {st.session_state.user_name}")
-
     st.divider()
 
     # ====================== SIDEBAR ======================
@@ -133,7 +128,6 @@ else:
     # Load Data
     df_original = load_data_from_gsheet()
 
-    # ====================== LIVE FILTERS ======================
     # ====================== LIVE FILTERS ======================
     st.subheader("🔍 Live Filters")
     col1, _ = st.columns([3, 1])
@@ -152,45 +146,39 @@ else:
             mask |= filtered_df[col].astype(str).str.contains(search_term, case=False, na=False)
         filtered_df = filtered_df[mask]
 
-    # ====================== COLUMN FILTERS ======================
+    # Column Filters
     filter_cols = st.columns(4)
     for i, col in enumerate(df_original.columns):
         with filter_cols[i % 4]:
-            if col == 'Date':  # Special handling for Date
-                #st.write("**Date Range**")
+            if col == 'Date':
+                st.write("**Date Range**")
                 col_date1, col_date2 = st.columns(2)
-                
                 with col_date1:
                     from_date = st.date_input(
-                        "From Date", 
+                        "From Date",
                         value=filtered_df['Date'].min().date() if not filtered_df.empty else None,
                         key="from_date"
                     )
-                
                 with col_date2:
                     to_date = st.date_input(
-                        "To Date", 
+                        "To Date",
                         value=filtered_df['Date'].max().date() if not filtered_df.empty else None,
                         key="to_date"
                     )
-                
                 if from_date and to_date:
                     filtered_df = filtered_df[
-                        (filtered_df['Date'].dt.date >= from_date) & 
+                        (filtered_df['Date'].dt.date >= from_date) &
                         (filtered_df['Date'].dt.date <= to_date)
                     ]
-                
             elif col == 'FCOUNT':
                 selected = st.multiselect(f"{col}", sorted(df_original[col].unique()), default=[], key=f"filter_{col}")
                 if selected:
                     filtered_df = filtered_df[filtered_df[col].isin(selected)]
-                    
             elif pd.api.types.is_numeric_dtype(df_original[col]) and col != 'FCOUNT':
                 minv = int(df_original[col].min() or 0)
                 maxv = int(df_original[col].max() or 0)
                 rng = st.slider(col, minv, maxv, (minv, maxv), key=f"filter_{col}")
                 filtered_df = filtered_df[(filtered_df[col] >= rng[0]) & (filtered_df[col] <= rng[1])]
-                
             else:
                 opts = sorted(df_original[col].dropna().astype(str).unique())
                 selected = st.multiselect(f"{col}", opts, default=[], key=f"filter_{col}")
@@ -200,20 +188,19 @@ else:
     # ====================== METRICS ======================
     st.divider()
     c1, c2, c3, c4 = st.columns(4)
-    with c1: 
+    with c1:
         st.metric("Total Records", f"{len(filtered_df):,}")
-    with c2: 
+    with c2:
         st.metric("Total FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).sum():,}")
-    with c3: 
+    with c3:
         if not filtered_df.empty and 'STATION' in filtered_df.columns and 'FCOUNT' in filtered_df.columns:
-            # Show Station with Maximum Single FCOUNT (as requested)
             max_row = filtered_df.loc[filtered_df['FCOUNT'].idxmax()]
             top_station = max_row['STATION']
             top_value = max_row['FCOUNT']
             st.metric("Top Station", top_station, f"({top_value:,})")
         else:
             st.metric("Top Station", "-")
-    with c4: 
+    with c4:
         st.metric("Max FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).max():,}" if not filtered_df.empty else 0)
 
     # ====================== CHARTS ======================
@@ -231,12 +218,14 @@ else:
     with col_table:
         st.subheader("Station Summary")
         if not filtered_df.empty:
-            summary = filtered_df.groupby('STATION')['FCOUNT'].agg(Total_FCOUNT='sum', Records='count').sort_values('Total_FCOUNT', ascending=False)
+            summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
+                Total_FCOUNT='sum', Records='count'
+            ).sort_values('Total_FCOUNT', ascending=False)
             st.dataframe(summary.style.format({"Total_FCOUNT": "{:,}", "Records": "{:,}"})
                         .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
                         use_container_width=True)
 
-    # ====================== DETAILED RECORDS ======================
+    # ====================== DETAILED RECORDS + SUMMARY ======================
     st.divider()
     st.subheader("📋 Detailed Records")
 
@@ -247,9 +236,40 @@ else:
         if 'Date' in display_df.columns:
             display_df['Date'] = display_df['Date'].dt.date
 
-        st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}), use_container_width=True, hide_index=True)
+        st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}), 
+                    use_container_width=True, hide_index=True)
+
+        # ====================== ERROR & CATEGORY SUMMARY ======================
+        st.markdown("---")
+        st.subheader("📊 Summary by Error & Category")
+
+        sum_col1, sum_col2 = st.columns(2)
+
+        with sum_col1:
+            st.markdown("**Error-wise Summary**")
+            if 'Error' in filtered_df.columns:
+                error_sum = (filtered_df.groupby('Error')['FCOUNT']
+                            .agg(Total_FCOUNT='sum', Occurrences='count')
+                            .sort_values('Total_FCOUNT', ascending=False)
+                            .reset_index())
+                st.dataframe(error_sum.style.format({"Total_FCOUNT": "{:,}", "Occurrences": "{:,}"})
+                            .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
+                            use_container_width=True, hide_index=True)
+
+        with sum_col2:
+            st.markdown("**Category-wise Summary**")
+            if 'Category' in filtered_df.columns:
+                cat_sum = (filtered_df.groupby('Category')['FCOUNT']
+                          .agg(Total_FCOUNT='sum', Occurrences='count')
+                          .sort_values('Total_FCOUNT', ascending=False)
+                          .reset_index())
+                st.dataframe(cat_sum.style.format({"Total_FCOUNT": "{:,}", "Occurrences": "{:,}"})
+                            .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
+                            use_container_width=True, hide_index=True)
 
         st.markdown("---")
+
+        # ====================== REFRESH & DOWNLOAD ======================
         col_btn1, col_btn2 = st.columns([1, 1])
         with col_btn1:
             if st.button("🔄 Refresh Latest Data from Google Sheet",
@@ -260,12 +280,20 @@ else:
             output = BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                 display_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
-                summary_df = filtered_df.groupby('STATION')['FCOUNT'].agg(
+                
+                station_summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
                     Total_FCOUNT='sum', Record_Count='count'
                 ).sort_values('Total_FCOUNT', ascending=False).reset_index()
-                summary_df.to_excel(writer, index=False, sheet_name='Station_Summary')
+                station_summary.to_excel(writer, index=False, sheet_name='Station_Summary')
 
-                for sheet_name, df_sheet in [('Filtered_Records', display_df), ('Station_Summary', summary_df)]:
+                if 'Error' in filtered_df.columns:
+                    error_sum.to_excel(writer, index=False, sheet_name='Error_Summary')
+                if 'Category' in filtered_df.columns:
+                    cat_sum.to_excel(writer, index=False, sheet_name='Category_Summary')
+
+                # Formatting
+                for sheet_name, df_sheet in [('Filtered_Records', display_df), 
+                                           ('Station_Summary', station_summary)]:
                     worksheet = writer.sheets[sheet_name]
                     header_format = writer.book.add_format({
                         'bold': True, 'bg_color': '#003087', 'font_color': 'white',
@@ -273,7 +301,6 @@ else:
                     })
                     for col_num, value in enumerate(df_sheet.columns.values):
                         worksheet.write(0, col_num, value, header_format)
-                    
                     for idx, col in enumerate(df_sheet.columns):
                         max_len = max(df_sheet[col].astype(str).map(len).max(), len(str(col))) + 5
                         worksheet.set_column(idx, idx, min(max_len, 60))
