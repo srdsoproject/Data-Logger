@@ -38,7 +38,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ====================== YOUR CUSTOM INDIAN RAILWAYS LOGO ======================
-IR_LOGO_URL = "https://raw.githubusercontent.com/srdsoproject/Data-Logger/main/png-clipart-rail-transport-indian-railways-train-railway-recruitment-control-board-india-text-logo.png"
+IR_LOGO_URL = "https://raw.githubusercontent.com/srdsoproject/Data-Logger/blob/main/398-3987834_indian-railways-logo-hd-png-download.png"
 
 # ====================== SECRETS ======================
 SHEET_ID = st.secrets["google_sheets"]["sheet_id"]
