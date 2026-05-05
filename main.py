@@ -170,14 +170,24 @@ else:
                     filtered_df = filtered_df[filtered_df[col].astype(str).isin(selected)]
 
     # ====================== METRICS ======================
+        # ====================== METRICS ======================
     st.divider()
     c1, c2, c3, c4 = st.columns(4)
-    with c1: st.metric("Total Records", f"{len(filtered_df):,}")
-    with c2: st.metric("Total FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).sum():,}")
+    with c1: 
+        st.metric("Total Records", f"{len(filtered_df):,}")
+    with c2: 
+        st.metric("Total FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).sum():,}")
     with c3: 
-        top_st = filtered_df.groupby('STATION')['FCOUNT'].sum().idxmax() if not filtered_df.empty and 'STATION' in filtered_df.columns else "-"
-        st.metric("Top Station", top_st)
-    with c4: st.metric("Max FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).max():,}" if not filtered_df.empty else 0)
+        if not filtered_df.empty and 'STATION' in filtered_df.columns and 'FCOUNT' in filtered_df.columns:
+            # Show Station with Maximum Single FCOUNT (as requested)
+            max_row = filtered_df.loc[filtered_df['FCOUNT'].idxmax()]
+            top_station = max_row['STATION']
+            top_value = max_row['FCOUNT']
+            st.metric("Top Station", top_station, f"({top_value:,})")
+        else:
+            st.metric("Top Station", "-")
+    with c4: 
+        st.metric("Max FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).max():,}" if not filtered_df.empty else 0)
 
     # ====================== CHARTS ======================
     col_chart, col_table = st.columns([3, 2])
