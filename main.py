@@ -134,6 +134,7 @@ else:
     df_original = load_data_from_gsheet()
 
     # ====================== LIVE FILTERS ======================
+    # ====================== LIVE FILTERS ======================
     st.subheader("🔍 Live Filters")
     col1, _ = st.columns([3, 1])
     with col1:
@@ -144,25 +145,52 @@ else:
         )
 
     filtered_df = df_original.copy()
+
     if search_term:
         mask = pd.Series(False, index=filtered_df.index)
         for col in filtered_df.columns:
             mask |= filtered_df[col].astype(str).str.contains(search_term, case=False, na=False)
         filtered_df = filtered_df[mask]
 
-    # Column Filters
+    # ====================== COLUMN FILTERS ======================
     filter_cols = st.columns(4)
     for i, col in enumerate(df_original.columns):
         with filter_cols[i % 4]:
-            if col == 'FCOUNT':
+            if col == 'Date':  # Special handling for Date
+                st.write("**Date Range**")
+                col_date1, col_date2 = st.columns(2)
+                
+                with col_date1:
+                    from_date = st.date_input(
+                        "From Date", 
+                        value=filtered_df['Date'].min().date() if not filtered_df.empty else None,
+                        key="from_date"
+                    )
+                
+                with col_date2:
+                    to_date = st.date_input(
+                        "To Date", 
+                        value=filtered_df['Date'].max().date() if not filtered_df.empty else None,
+                        key="to_date"
+                    )
+                
+                if from_date and to_date:
+                    filtered_df = filtered_df[
+                        (filtered_df['Date'].dt.date >= from_date) & 
+                        (filtered_df['Date'].dt.date <= to_date)
+                    ]
+                
+            elif col == 'FCOUNT':
                 selected = st.multiselect(f"{col}", sorted(df_original[col].unique()), default=[], key=f"filter_{col}")
                 if selected:
                     filtered_df = filtered_df[filtered_df[col].isin(selected)]
+                    
             elif pd.api.types.is_numeric_dtype(df_original[col]) and col != 'FCOUNT':
                 minv = int(df_original[col].min() or 0)
                 maxv = int(df_original[col].max() or 0)
                 rng = st.slider(col, minv, maxv, (minv, maxv), key=f"filter_{col}")
                 filtered_df = filtered_df[(filtered_df[col] >= rng[0]) & (filtered_df[col] <= rng[1])]
+                
             else:
                 opts = sorted(df_original[col].dropna().astype(str).unique())
                 selected = st.multiselect(f"{col}", opts, default=[], key=f"filter_{col}")
@@ -170,7 +198,6 @@ else:
                     filtered_df = filtered_df[filtered_df[col].astype(str).isin(selected)]
 
     # ====================== METRICS ======================
-        # ====================== METRICS ======================
     st.divider()
     c1, c2, c3, c4 = st.columns(4)
     with c1: 
