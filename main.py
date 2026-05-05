@@ -109,9 +109,10 @@ if not st.session_state.logged_in:
     login_page()
 else:
     # ====================== HEADER - LOGO ABOVE TITLE ======================
-    st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-    st.image(IR_LOGO_URL, width=180)
-    st.markdown('</div>', unsafe_allow_html=True)
+    # ====================== HEADER - CENTERED LOGO ======================
+    st.markdown("<h1 style='text-align: center; margin-bottom: 10px;'>", unsafe_allow_html=True)
+    st.image(IR_LOGO_URL, width=190)
+    st.markdown("</h1>", unsafe_allow_html=True)
 
     st.markdown('<h1 class="dashboard-title">DATA LOGGER EXCEPTIONAL REPORT</h1>', unsafe_allow_html=True)
     st.markdown('<p class="subtitle">Central Railway • Solapur Division • Safety Branch</p>', unsafe_allow_html=True)
