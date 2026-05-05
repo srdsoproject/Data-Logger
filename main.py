@@ -33,7 +33,7 @@ st.markdown("""
         font-weight: 500;
         margin-top: -0.4rem;
     }
-    .stImage {text-align: center;}
+    .logo-container {text-align: center; margin-bottom: 10px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -51,7 +51,6 @@ def login_page():
     st.markdown('<h1 class="dashboard-title">SAFETY BRANCH</h1>', unsafe_allow_html=True)
     st.markdown('<p class="subtitle">Central Railway • Solapur Division</p>', unsafe_allow_html=True)
     st.divider()
-
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.subheader("🔐 Secure Login")
@@ -109,15 +108,13 @@ if "logged_in" not in st.session_state:
 if not st.session_state.logged_in:
     login_page()
 else:
-    # ====================== HEADER WITH YOUR LOGO ======================
-    col_logo, col_title = st.columns([1.2, 5])
-    
-    with col_logo:
-        st.image(IR_LOGO_URL, width=160)
-    
-    with col_title:
-        st.markdown('<h1 class="dashboard-title">DATA LOGGER EXCEPTIONAL REPORT</h1>', unsafe_allow_html=True)
-        st.markdown('<p class="subtitle">Central Railway • Solapur Division • Safety Branch</p>', unsafe_allow_html=True)
+    # ====================== HEADER - LOGO ABOVE TITLE ======================
+    st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+    st.image(IR_LOGO_URL, width=180)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown('<h1 class="dashboard-title">DATA LOGGER EXCEPTIONAL REPORT</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitle">Central Railway • Solapur Division • Safety Branch</p>', unsafe_allow_html=True)
 
     st.caption(f"**Logged in as:** {st.session_state.user_name}")
 
@@ -139,13 +136,12 @@ else:
     col1, _ = st.columns([3, 1])
     with col1:
         search_term = st.text_input(
-            "🔎 Global Search (across all columns)", 
+            "🔎 Global Search (across all columns)",
             placeholder="Search station, error, category, date...",
             key="global_search"
         )
 
     filtered_df = df_original.copy()
-
     if search_term:
         mask = pd.Series(False, index=filtered_df.index)
         for col in filtered_df.columns:
@@ -198,7 +194,7 @@ else:
         if not filtered_df.empty:
             summary = filtered_df.groupby('STATION')['FCOUNT'].agg(Total_FCOUNT='sum', Records='count').sort_values('Total_FCOUNT', ascending=False)
             st.dataframe(summary.style.format({"Total_FCOUNT": "{:,}", "Records": "{:,}"})
-                        .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'), 
+                        .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
                         use_container_width=True)
 
     # ====================== DETAILED RECORDS ======================
@@ -215,19 +211,16 @@ else:
         st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}), use_container_width=True, hide_index=True)
 
         st.markdown("---")
-
         col_btn1, col_btn2 = st.columns([1, 1])
         with col_btn1:
-            if st.button("🔄 Refresh Latest Data from Google Sheet", 
+            if st.button("🔄 Refresh Latest Data from Google Sheet",
                         type="primary", use_container_width=True, key="main_refresh"):
                 refresh_data()
 
-        # ====================== DOWNLOAD SECTION ======================
         with col_btn2:
             output = BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                 display_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
-                
                 summary_df = filtered_df.groupby('STATION')['FCOUNT'].agg(
                     Total_FCOUNT='sum', Record_Count='count'
                 ).sort_values('Total_FCOUNT', ascending=False).reset_index()
