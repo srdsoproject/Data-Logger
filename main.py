@@ -32,7 +32,6 @@ def login_page():
     st.markdown('<h1 class="main-header">Central Railway, Solapur Division</h1>', unsafe_allow_html=True)
     st.markdown('<p class="sub-header">Data-Logger Exceptional Reports-SUR DIVN.</p>', unsafe_allow_html=True)
     st.divider()
-
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.subheader("🔐 Login to Access Dashboard")
@@ -98,21 +97,15 @@ else:
     st.markdown('<p class="sub-header">Data-Logger Exceptional Reports SUR DIVN.</p>', unsafe_allow_html=True)
     st.caption(f"Logged in as: **{st.session_state.user_name}**")
 
-    # Top Refresh Button (Optional - keeping one at top also)
-    if st.button("🔄 Refresh Data from Sheet", type="primary"):
-        refresh_data()
-
     st.divider()
-
     df_original = load_data_from_gsheet()
 
     # ====================== LIVE FILTERS + SEARCH ======================
     st.subheader("🔍 Live Filters")
-
     col1, col2 = st.columns([3, 1])
     with col1:
         search_term = st.text_input(
-            "🔎 Global Search (across all columns)", 
+            "🔎 Global Search (across all columns)",
             placeholder="Search station, error, category, date, fcount...",
             key="global_search"
         )
@@ -139,7 +132,9 @@ else:
                 rng = st.slider(col, minv, maxv, (minv, maxv), key=f"f_{col}")
                 filtered_df = filtered_df[(filtered_df[col] >= rng[0]) & (filtered_df[col] <= rng[1])]
             else:
-                selected = st.multiselect(f"{col}", options=sorted(df_original[col].dropna().astype(str).unique()), default=[], key=f"f_{col}")
+                selected = st.multiselect(f"{col}", 
+                                        options=sorted(df_original[col].dropna().astype(str).unique()), 
+                                        default=[], key=f"f_{col}")
                 if selected:
                     filtered_df = filtered_df[filtered_df[col].astype(str).isin(selected)]
 
@@ -148,12 +143,11 @@ else:
     c1, c2, c3, c4 = st.columns(4)
     with c1: st.metric("Records", f"{len(filtered_df):,}")
     with c2: st.metric("Total FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).sum():,}")
-    with c3: 
+    with c3:
         top_st = filtered_df.groupby('STATION')['FCOUNT'].sum().idxmax() if not filtered_df.empty and 'STATION' in filtered_df.columns else "-"
         st.metric("Top Station", top_st)
     with c4: st.metric("Max FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).max():,}" if not filtered_df.empty else 0)
 
-    # Charts and Summary Table (same as before)
     col_chart, col_table = st.columns([3, 2])
     with col_chart:
         st.subheader("Top 15 Stations by FCOUNT")
@@ -170,7 +164,7 @@ else:
         if not filtered_df.empty:
             summary = filtered_df.groupby('STATION')['FCOUNT'].agg(Total_FCOUNT='sum', Records='count').sort_values('Total_FCOUNT', ascending=False)
             st.dataframe(summary.style.format({"Total_FCOUNT": "{:,}", "Records": "{:,}"})
-                        .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'), 
+                        .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
                         use_container_width=True)
 
     # ====================== DETAILED RECORDS ======================
@@ -184,24 +178,59 @@ else:
         if 'Date' in display_df.columns:
             display_df['Date'] = display_df['Date'].dt.date
 
-        st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}), use_container_width=True, hide_index=True)
+        st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}), 
+                    use_container_width=True, hide_index=True)
 
-        # ====================== REFRESH BUTTON BELOW TABLE ======================
+        # ====================== REFRESH BUTTON ======================
         st.markdown("---")
         if st.button("🔄 Refresh Latest Data from Google Sheet", type="primary", use_container_width=True):
             refresh_data()
 
-        # Download Section
+        # ====================== IMPROVED EXCEL DOWNLOAD ======================
         st.subheader("📥 Download Filtered Data")
+
         output = BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            # Write main data
             display_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
-            # Add summary sheet...
-            summary_df = filtered_df.groupby('STATION')['FCOUNT'].agg(Total_FCOUNT='sum', Record_Count='count').reset_index()
+            
+            # Write summary
+            summary_df = filtered_df.groupby('STATION')['FCOUNT'].agg(
+                Total_FCOUNT='sum', Record_Count='count'
+            ).sort_values('Total_FCOUNT', ascending=False).reset_index()
             summary_df.to_excel(writer, index=False, sheet_name='Station_Summary')
 
+            # Format both sheets
+            for sheet_name, df_sheet in [('Filtered_Records', display_df), ('Station_Summary', summary_df)]:
+                worksheet = writer.sheets[sheet_name]
+                
+                # Header format
+                header_format = writer.book.add_format({
+                    'bold': True,
+                    'bg_color': '#0b5394',
+                    'font_color': 'white',
+                    'border': 1,
+                    'align': 'center'
+                })
+                
+                # Write headers with format
+                for col_num, value in enumerate(df_sheet.columns.values):
+                    worksheet.write(0, col_num, value, header_format)
+                
+                # Auto-adjust column width and add border
+                for idx, col in enumerate(df_sheet.columns):
+                    max_len = max(df_sheet[col].astype(str).map(len).max(), len(str(col))) + 4
+                    worksheet.set_column(idx, idx, min(max_len, 50))
+                
+                # Add border to all cells
+                border_format = writer.book.add_format({'border': 1})
+                worksheet.conditional_format(0, 0, len(df_sheet), len(df_sheet.columns)-1, 
+                                           {'type': 'no_blanks', 'format': border_format})
+
+        output.seek(0)
+
         st.download_button(
-            label="⬇️ Download Excel Report",
+            label="⬇️ Download Professional Excel Report",
             data=output.getvalue(),
             file_name="Datalogger_Filtered_Report.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
