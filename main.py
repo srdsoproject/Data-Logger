@@ -111,7 +111,7 @@ else:
     # ====================== HEADER - LOGO ABOVE TITLE ======================
     # ====================== HEADER - CENTERED LOGO ======================
     # ====================== CENTERED LOGO ======================
-    col1, col2, col3 = st.columns([1, 2, 1])
+    col1, col2, col3 = st.columns([2, 3, 1])
     with col2:
         st.image(IR_LOGO_URL, width=220)
 
