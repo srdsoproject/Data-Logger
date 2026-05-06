@@ -46,18 +46,30 @@ USERS = st.secrets["users"]
 
 # ====================== LOGIN PAGE ======================
 def login_page():
-    # Center the logo and header content
+    # Main centered container
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        # Centered Logo
+        # Logo centered
         st.image(IR_LOGO_URL, width=220)
         
-        # Centered Title and Subtitle
+        # "An initiative by" text
         st.markdown(
-            '<h1 class="dashboard-title" style="text-align: center;">SAFETY BRANCH</h1>', 
+            """
+            <p style="text-align: center; color: #666; margin-bottom: 0px; font-size: 14px;">
+                An initiative by
+            </p>
+            """, 
             unsafe_allow_html=True
         )
+        
+        # Main Title
+        st.markdown(
+            '<h1 class="dashboard-title" style="text-align: center; margin-top: 5px;">SAFETY BRANCH</h1>', 
+            unsafe_allow_html=True
+        )
+        
+        # Subtitle
         st.markdown(
             '<p class="subtitle" style="text-align: center;">Central Railway • Solapur Division</p>', 
             unsafe_allow_html=True
@@ -74,9 +86,7 @@ def login_page():
             email = st.text_input("Username / Email", placeholder="Enter your ID")
             password = st.text_input("Password", type="password", placeholder="Enter Password")
             
-            submitted = st.form_submit_button("Login", type="primary", use_container_width=True)
-            
-            if submitted:
+            if st.form_submit_button("Login", type="primary", use_container_width=True):
                 if email in USERS and password == USERS[email].get("password"):
                     st.session_state.logged_in = True
                     st.session_state.user_name = USERS[email].get("name")
