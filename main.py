@@ -46,17 +46,37 @@ USERS = st.secrets["users"]
 
 # ====================== LOGIN PAGE ======================
 def login_page():
-    st.image(IR_LOGO_URL, width=220)
-    st.markdown('<h1 class="dashboard-title">SAFETY BRANCH</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitle">Central Railway • Solapur Division</p>', unsafe_allow_html=True)
-    st.divider()
-    col1, col2, col3 = st.columns([3, 3, 1])
+    # Center the logo and header content
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
     with col2:
-        st.subheader("🔐 Secure Login")
+        # Centered Logo
+        st.image(IR_LOGO_URL, width=220)
+        
+        # Centered Title and Subtitle
+        st.markdown(
+            '<h1 class="dashboard-title" style="text-align: center;">SAFETY BRANCH</h1>', 
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            '<p class="subtitle" style="text-align: center;">Central Railway • Solapur Division</p>', 
+            unsafe_allow_html=True
+        )
+    
+    st.divider()
+
+    # Login Form - Centered
+    col1, col2, col3 = st.columns([3, 3, 3])
+    with col2:
+        st.subheader("🔐 Secure Login", anchor=False)
+        
         with st.form("login_form"):
             email = st.text_input("Username / Email", placeholder="Enter your ID")
             password = st.text_input("Password", type="password", placeholder="Enter Password")
-            if st.form_submit_button("Login", type="primary", use_container_width=True):
+            
+            submitted = st.form_submit_button("Login", type="primary", use_container_width=True)
+            
+            if submitted:
                 if email in USERS and password == USERS[email].get("password"):
                     st.session_state.logged_in = True
                     st.session_state.user_name = USERS[email].get("name")
