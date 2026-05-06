@@ -46,55 +46,6 @@ USERS = st.secrets["users"]
 
 # ====================== LOGIN PAGE ======================
 def login_page():
-    # ====================== HEADER - Centered ======================
-    col1, col2, col3 = st.columns([1, 1, 1])
-    
-    with col2:
-        # Logo (Centered)
-        st.image(IR_LOGO_URL, width=180, use_column_width=False)
-        
-        # "An initiative by"
-        st.markdown(
-            """
-            <p style="text-align: center; 
-                      color: #555; 
-                      margin: 15px 0 5px 0; 
-                      font-size: 15px;">
-                An initiative by
-            </p>
-            """, 
-            unsafe_allow_html=True
-        )
-        
-        # SAFETY BRANCH Title
-        st.markdown(
-            """
-            <h1 style="text-align: center; 
-                       margin: 8px 0 8px 0; 
-                       font-size: 42px; 
-                       font-weight: 700; 
-                       color: #8B4513;">
-                SAFETY BRANCH
-            </h1>
-            """, 
-            unsafe_allow_html=True
-        )
-        
-        # Subtitle
-        st.markdown(
-            """
-            <p style="text-align: center; 
-                      color: #1E4D8C; 
-                      font-size: 18px; 
-                      margin-top: 0;">
-                Central Railway • Solapur Division
-            </p>
-            """, 
-            unsafe_allow_html=True
-        )
-
-    st.divider()
-
     # ====================== LOGIN SECTION ======================
     col1, col2, col3 = st.columns([3, 3, 3])
     
