@@ -46,39 +46,44 @@ USERS = st.secrets["users"]
 
 # ====================== LOGIN PAGE ======================
 def login_page():
-    # Main centered container
-    col1, col2, col3 = st.columns([3, 3, 1])
+    # ====================== HEADER SECTION ======================
+    # Better centering columns
+    col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        # Logo centered
+        # Logo - Centered
         st.image(IR_LOGO_URL, width=220)
         
-        # "An initiative by" text
+        # "An initiative by"
         st.markdown(
             """
-            <p style="text-align: center; color: #666; margin-bottom: 0px; font-size: 14px;">
+            <p style="text-align: center; 
+                      color: #666; 
+                      margin-bottom: 2px; 
+                      font-size: 14px;">
                 An initiative by
             </p>
             """, 
             unsafe_allow_html=True
         )
         
-        # Main Title
+        # SAFETY BRANCH Title
         st.markdown(
-            '<h1 class="dashboard-title" style="text-align: center; margin-top: 5px;">SAFETY BRANCH</h1>', 
+            '<h1 class="dashboard-title" style="text-align: center; margin: 8px 0 5px 0;">SAFETY BRANCH</h1>', 
             unsafe_allow_html=True
         )
         
         # Subtitle
         st.markdown(
-            '<p class="subtitle" style="text-align: center;">Central Railway • Solapur Division</p>', 
+            '<p class="subtitle" style="text-align: center; margin-top: 0;">Central Railway • Solapur Division</p>', 
             unsafe_allow_html=True
         )
-    
+
     st.divider()
 
-    # Login Form - Centered
+    # ====================== LOGIN FORM ======================
     col1, col2, col3 = st.columns([3, 3, 3])
+    
     with col2:
         st.subheader("🔐 Secure Login", anchor=False)
         
@@ -94,7 +99,6 @@ def login_page():
                     st.rerun()
                 else:
                     st.error("Invalid credentials!")
-
 # ====================== LOAD DATA ======================
 @st.cache_data(ttl=300)
 def load_data_from_gsheet():
