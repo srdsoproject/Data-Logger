@@ -47,7 +47,7 @@ USERS = st.secrets["users"]
 # ====================== LOGIN PAGE ======================
 def login_page():
     # Main centered container
-    col1, col2, col3 = st.columns([1, 2, 1])
+    col1, col2, col3 = st.columns([3, 2, 1])
     
     with col2:
         # Logo centered
