@@ -46,11 +46,11 @@ USERS = st.secrets["users"]
 
 # ====================== LOGIN PAGE ======================
 def login_page():
-    st.image(IR_LOGO_URL, width=320)
+    st.image(IR_LOGO_URL, width=220)
     st.markdown('<h1 class="dashboard-title">SAFETY BRANCH</h1>', unsafe_allow_html=True)
     st.markdown('<p class="subtitle">Central Railway • Solapur Division</p>', unsafe_allow_html=True)
     st.divider()
-    col1, col2, col3 = st.columns([1, 2, 1])
+    col1, col2, col3 = st.columns([3, 3, 1])
     with col2:
         st.subheader("🔐 Secure Login")
         with st.form("login_form"):
