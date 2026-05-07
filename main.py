@@ -28,17 +28,23 @@ st.markdown("""
         text-align: center;
         margin-bottom: 0.2rem;
     }
-    .subtitle { font-size: 1.4rem; color: #003087; text-align: center; font-weight: 500; margin-top: -0.4rem; }
+    .subtitle {
+        font-size: 1.4rem;
+        color: #003087;
+        text-align: center;
+        font-weight: 500;
+        margin-top: -0.4rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# ====================== SECRETS & LOGO ======================
+# ====================== CONFIG ======================
 IR_LOGO_URL = "https://raw.githubusercontent.com/srdsoproject/testing/main/Central%20Railway%20Logo.png"
 SHEET_ID = st.secrets["google_sheets"]["sheet_id"]
 SHEET_NAME = st.secrets["google_sheets"]["sheet_name"]
 USERS = st.secrets["users"]
 
-# ====================== STATION COORDINATES ======================
+# ====================== SOLAPUR DIVISION STATIONS ======================
 station_coords = {
     "SOLAPUR": {"lat": 17.664, "lon": 75.893, "code": "SUR"},
     "KURDUWADI": {"lat": 18.090, "lon": 75.415, "code": "KWV"},
@@ -52,7 +58,9 @@ station_coords = {
     "WADI": {"lat": 17.070, "lon": 76.920, "code": "WADI"},
     "DAUND": {"lat": 18.460, "lon": 74.580, "code": "DD"},
     "OSMANABAD": {"lat": 18.180, "lon": 76.040, "code": "UMD"},
-    # Add more stations here...
+    "BALE": {"lat": 17.680, "lon": 75.950, "code": "BALE"},
+    "PAKNI": {"lat": 17.620, "lon": 75.920, "code": "PK"},
+    # Add more stations as needed
 }
 
 # ====================== LOGIN ======================
@@ -60,7 +68,7 @@ def login_page():
     col1, col2, col3 = st.columns([3, 3, 3])
     with col2:
         st.subheader("🔐 Secure Login")
-        with st.form("login_form"):
+        with st.form("login_form", clear_on_submit=False):
             email = st.text_input("Username / Email", placeholder="Enter your ID")
             password = st.text_input("Password", type="password", placeholder="Enter Password")
             if st.form_submit_button("Login", type="primary", use_container_width=True):
@@ -83,10 +91,12 @@ def load_data_from_gsheet():
         client = gspread.authorize(credentials)
         sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
         df = pd.DataFrame(sheet.get_all_records())
+        if df.empty:
+            st.error("Google Sheet is empty!")
+            st.stop()
         df.columns = df.columns.str.strip()
         df = df.loc[:, ~df.columns.str.lower().str.replace('.', '', regex=False)
                     .str.contains(r'^(?:sl|sr)\s*no', regex=True)]
-        
         if 'FCOUNT' in df.columns:
             df['FCOUNT'] = pd.to_numeric(df['FCOUNT'], errors='coerce').fillna(0).astype(int)
         if 'Date' in df.columns:
@@ -98,7 +108,7 @@ def load_data_from_gsheet():
 
 def refresh_data():
     st.cache_data.clear()
-    st.success("✅ Data refreshed successfully!")
+    st.success("✅ Data refreshed successfully from Google Sheet!")
     st.rerun()
 
 # ====================== MAIN APP ======================
@@ -108,6 +118,7 @@ if "logged_in" not in st.session_state:
 if not st.session_state.logged_in:
     login_page()
 else:
+    # Header
     col1, col2, col3 = st.columns([3, 3, 1])
     with col2:
         st.image(IR_LOGO_URL, width=220)
@@ -116,19 +127,25 @@ else:
     st.caption(f"**Logged in as:** {st.session_state.user_name}")
     st.divider()
 
+    # Sidebar
     with st.sidebar:
         st.header("🔧 Controls")
         if st.button("🔄 Refresh Data", type="primary", use_container_width=True):
             refresh_data()
+        st.divider()
+        st.info("Use filters and click on map to explore.")
 
     df_original = load_data_from_gsheet()
 
-    # Tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "🗺️ Interactive Map", "📈 Charts", "📋 Detailed Records"])
+    # ====================== TABS ======================
+    tab_overview, tab_map, tab_charts, tab_data = st.tabs([
+        "📊 Overview", "🗺️ Interactive Map", "📈 Charts", "📋 Detailed Records"
+    ])
 
-    # Live Filters
-    with st.expander("🔍 Live Filters", expanded=False):
-        search_term = st.text_input("Global Search", placeholder="Search station, error...", key="global_search")
+    # ====================== LIVE FILTERS ======================
+    with st.expander("🔍 Live Filters", expanded=True):
+        search_term = st.text_input("🔎 Global Search", placeholder="Search station, error, category...", key="global_search")
+        
         filtered_df = df_original.copy()
         if search_term:
             mask = pd.Series(False, index=filtered_df.index)
@@ -136,95 +153,145 @@ else:
                 mask |= filtered_df[col].astype(str).str.contains(search_term, case=False, na=False)
             filtered_df = filtered_df[mask]
 
+        # Date Filter
         if 'Date' in filtered_df.columns and not filtered_df.empty:
             col_d1, col_d2 = st.columns(2)
             with col_d1:
                 from_date = st.date_input("From Date", value=filtered_df['Date'].min().date())
             with col_d2:
                 to_date = st.date_input("To Date", value=filtered_df['Date'].max().date())
-            filtered_df = filtered_df[(filtered_df['Date'].dt.date >= from_date) & 
-                                      (filtered_df['Date'].dt.date <= to_date)]
+            filtered_df = filtered_df[
+                (filtered_df['Date'].dt.date >= from_date) &
+                (filtered_df['Date'].dt.date <= to_date)
+            ]
 
     # ====================== TAB 1: OVERVIEW ======================
-    with tab1:
+    with tab_overview:
         c1, c2, c3, c4 = st.columns(4)
-        with c1: st.metric("Total Records", f"{len(filtered_df):,}")
-        with c2: st.metric("Total FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).sum():,}")
+        with c1:
+            st.metric("Total Records", f"{len(filtered_df):,}")
+        with c2:
+            st.metric("Total FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).sum():,}")
         with c3:
             if not filtered_df.empty and 'STATION' in filtered_df.columns:
-                top_station = filtered_df.loc[filtered_df['FCOUNT'].idxmax(), 'STATION']
-                st.metric("Top Station", top_station)
-        with c4: st.metric("Max FCOUNT", filtered_df.get('FCOUNT', pd.Series(0)).max())
+                top_row = filtered_df.loc[filtered_df['FCOUNT'].idxmax()]
+                st.metric("Top Station", top_row['STATION'], f"{top_row['FCOUNT']:,}")
+        with c4:
+            st.metric("Max FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).max():,}")
 
-    # ====================== TAB 2: MAP (FIXED) ======================
-    with tab2:
-        st.subheader("🗺️ Solapur Division - Click any station to filter")
-        
+    # ====================== TAB 2: INTERACTIVE MAP ======================
+    with tab_map:
+        st.subheader("🗺️ Solapur Division Interactive Map")
+        st.caption("Click on any station marker to filter the entire dashboard")
+
         if filtered_df.empty or 'STATION' not in filtered_df.columns:
-            st.warning("No data to display on map.")
+            st.warning("No data available to show on map.")
         else:
-            # Prepare map data
-            map_data = filtered_df.groupby('STATION')['FCOUNT'].sum().reset_index()
+            # Prepare data for map
+            map_agg = filtered_df.groupby('STATION')['FCOUNT'].sum().reset_index()
             coords_df = pd.DataFrame.from_dict(station_coords, orient='index').reset_index()
             coords_df.columns = ['STATION', 'lat', 'lon', 'code']
             
-            map_data = map_data.merge(coords_df, on='STATION', how='left').dropna(subset=['lat'])
+            map_data = map_agg.merge(coords_df, on='STATION', how='left').dropna(subset=['lat'])
 
-            m = folium.Map(location=[17.85, 75.8], zoom_start=7.5, tiles="CartoDB positron")
+            if map_data.empty:
+                st.warning("No station coordinates found for the current data.")
+            else:
+                m = folium.Map(location=[17.85, 75.80], zoom_start=7.5, tiles="CartoDB positron")
 
-            for _, row in map_data.iterrows():
-                intensity = row['FCOUNT'] / map_data['FCOUNT'].max() if map_data['FCOUNT'].max() > 0 else 0
-                
-                popup_html = f"""
-                <b>{row['STATION']}</b><br>
-                Total FCOUNT: <b>{int(row['FCOUNT']):,}</b><br>
-                Records: {len(filtered_df[filtered_df['STATION'].astype(str).str.strip() == str(row['STATION']).strip()])}
-                """
+                max_fcount = map_data['FCOUNT'].max()
+                for _, row in map_data.iterrows():
+                    intensity = row['FCOUNT'] / max_fcount if max_fcount > 0 else 0
+                    color = "darkred" if intensity > 0.7 else "red" if intensity > 0.4 else "orange"
 
-                folium.CircleMarker(
-                    location=[row['lat'], row['lon']],
-                    radius=10 + intensity * 15,
-                    popup=folium.Popup(popup_html, max_width=300),
-                    tooltip=f"{row['STATION']} - {int(row['FCOUNT']):,}",
-                    color='red',
-                    fill=True,
-                    fill_color='orange' if intensity < 0.6 else 'red',
-                    fill_opacity=0.8,
-                ).add_to(m)
+                    popup_html = f"""
+                    <h4 style="margin:0">{row['STATION']}</h4>
+                    <b>Total FCOUNT:</b> {row['FCOUNT']:,}<br>
+                    <b>Records:</b> {len(filtered_df[filtered_df['STATION'].astype(str).str.strip() == str(row['STATION']).strip()])}
+                    """
 
-            map_return = st_folium(m, width=1300, height=700, returned_objects=["last_object_clicked"])
+                    folium.CircleMarker(
+                        location=[row['lat'], row['lon']],
+                        radius=10 + intensity * 18,
+                        popup=folium.Popup(popup_html, max_width=300),
+                        tooltip=f"{row['STATION']} ({row['FCOUNT']:,})",
+                        color=color,
+                        fill=True,
+                        fill_color=color,
+                        fill_opacity=0.85,
+                        weight=3
+                    ).add_to(m)
 
-            # Handle Click
-            if map_return and map_return.get("last_object_clicked"):
-                clicked_lat = map_return["last_object_clicked"]["lat"]
-                clicked_lon = map_return["last_object_clicked"]["lng"]
+                # Render Map
+                map_return = st_folium(m, width=1350, height=720, returned_objects=["last_object_clicked"])
 
-                map_data['dist'] = ((map_data['lat'] - clicked_lat)**2 + (map_data['lon'] - clicked_lon)**2)**0.5
-                selected_station = map_data.loc[map_data['dist'].idxmin(), 'STATION']
+                # Handle Click
+                if map_return and map_return.get("last_object_clicked"):
+                    lat = map_return["last_object_clicked"]["lat"]
+                    lon = map_return["last_object_clicked"]["lng"]
 
-                st.success(f"✅ Filtered to: **{selected_station}**")
-                filtered_df = filtered_df[filtered_df['STATION'].astype(str).str.strip() == str(selected_station).strip()]
+                    map_data['dist'] = ((map_data['lat'] - lat)**2 + (map_data['lon'] - lon)**2)**0.5
+                    selected_station = map_data.loc[map_data['dist'].idxmin(), 'STATION']
 
-    # ====================== TAB 3 & 4 (Same as before) ======================
-    with tab3:
-        st.subheader("Top 15 Stations by FCOUNT")
-        if not filtered_df.empty:
-            top15 = filtered_df.groupby('STATION')['FCOUNT'].sum().nlargest(15).reset_index()
-            fig = px.bar(top15, x='STATION', y='FCOUNT', text='FCOUNT', color='FCOUNT', color_continuous_scale='RdYlGn_r')
-            fig.update_layout(height=500, xaxis_tickangle=45)
-            st.plotly_chart(fig, use_container_width=True)
+                    st.success(f"✅ **Filtered to Station: {selected_station}**")
+                    filtered_df = filtered_df[filtered_df['STATION'].astype(str).str.strip() == str(selected_station).strip()]
 
-    with tab4:
-        st.subheader("Detailed Records")
-        if not filtered_df.empty:
+    # ====================== TAB 3: CHARTS ======================
+    with tab_charts:
+        col_c1, col_c2 = st.columns([3, 2])
+        with col_c1:
+            st.subheader("Top 15 Stations by FCOUNT")
+            if not filtered_df.empty and 'STATION' in filtered_df.columns:
+                top15 = filtered_df.groupby('STATION')['FCOUNT'].sum().nlargest(15).reset_index()
+                fig = px.bar(top15, x='STATION', y='FCOUNT', text='FCOUNT',
+                             color='FCOUNT', color_continuous_scale='RdYlGn_r')
+                fig.update_traces(texttemplate='%{text:,}', textposition='outside')
+                fig.update_layout(height=520, xaxis_tickangle=45)
+                st.plotly_chart(fig, use_container_width=True)
+
+        with col_c2:
+            st.subheader("Station Summary")
+            if not filtered_df.empty:
+                summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
+                    Total_FCOUNT='sum', Records='count'
+                ).sort_values('Total_FCOUNT', ascending=False)
+                st.dataframe(summary.style.format({"Total_FCOUNT": "{:,}", "Records": "{:,}"})
+                            .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
+                            use_container_width=True)
+
+    # ====================== TAB 4: DETAILED RECORDS ======================
+    with tab_data:
+        st.subheader("📋 Detailed Records")
+        if filtered_df.empty:
+            st.warning("No records found.")
+        else:
             display_df = filtered_df.copy()
             if 'Date' in display_df.columns:
                 display_df['Date'] = display_df['Date'].dt.date
-            st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-            # Download Button (you can expand this later)
-            st.download_button("Download Excel", 
-                              data=BytesIO(),  # Add your excel logic here
-                              file_name="report.xlsx")
+            st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}),
+                        use_container_width=True, hide_index=True)
+
+            # Download Section
+            st.markdown("---")
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                display_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
+                
+                # Station Summary
+                summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
+                    Total_FCOUNT='sum', Records='count'
+                ).sort_values('Total_FCOUNT', ascending=False).reset_index()
+                summary.to_excel(writer, index=False, sheet_name='Station_Summary')
+
+            output.seek(0)
+            st.download_button(
+                label="⬇️ Download Professional Excel Report",
+                data=output.getvalue(),
+                file_name=f"Datalogger_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+                use_container_width=True
+            )
 
     st.caption("🚄 Safety Branch | Central Railway, Solapur Division")
