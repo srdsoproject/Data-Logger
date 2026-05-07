@@ -58,7 +58,7 @@ station_coords = {
     "LATUR": {"lat": 18.400, "lon": 76.570, "code": "LUR"},
     "KALABURAGI": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},
     "GULBARGA": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},
-    "WADI": {"lat": 17.0523859413162, "lon": 76.99164480964055, "code": "WADI"},
+    "WADI": {"lat": 17.05303569516522, "lon": 76.99208511018121, "code": "WADI"},
     "DAUND": {"lat": 18.460, "lon": 74.580, "code": "DD"},
     "OSMANABAD": {"lat": 18.180, "lon": 76.040, "code": "UMD"},
     "TIKEKARWADI": {"lat": 17.700, "lon": 75.880, "code": "TKWD"},
@@ -141,7 +141,7 @@ else:
 
     df_original = load_data_from_gsheet()
 
-    # Tabs
+    # ====================== TABS ======================
     tab_overview, tab_map, tab_charts, tab_data = st.tabs([
         "📊 Overview", "🗺️ Interactive Map", "📈 Charts", "📋 Detailed Records"
     ])
@@ -178,8 +178,7 @@ else:
                 st.metric("Top Station", top_row['STATION'], f"{top_row['FCOUNT']:,}")
         with c4: st.metric("Max FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).max():,}")
 
-    # TAB 2: INTERACTIVE MAP (Fixed & Simplified)
-        # ====================== TAB 2: INTERACTIVE MAP (SIMPLIFIED & FIXED) ======================
+    # TAB 2: INTERACTIVE MAP
     with tab_map:
         st.subheader("🗺️ Solapur Division Interactive Map")
         st.caption("Click on any station marker to filter the entire dashboard")
@@ -210,16 +209,10 @@ else:
 
             if map_df.empty:
                 st.error("No matching station coordinates found.")
-                st.write("**Stations in your data:**", sorted(filtered_df['STATION'].unique()[:15]))
+                st.write("**Stations in your data:**", sorted(filtered_df['STATION'].unique()[:20]))
             else:
-                # Create Map
-                m = folium.Map(
-                    location=[17.85, 75.80], 
-                    zoom_start=7.2, 
-                    tiles="CartoDB positron",
-                    width="100%",
-                    height="700px"
-                )
+                # Create Folium Map
+                m = folium.Map(location=[17.85, 75.80], zoom_start=7.2, tiles="CartoDB positron")
 
                 max_fcount = map_df['FCOUNT'].max()
                 for _, row in map_df.iterrows():
@@ -234,18 +227,17 @@ else:
 
                     folium.CircleMarker(
                         location=[row['lat'], row['lon']],
-                        radius=12 + (intensity * 18),
-                        popup=folium.Popup(popup_html, max_width=280),
+                        radius=12 + intensity * 18,
+                        popup=folium.Popup(popup_html, max_width=300),
                         tooltip=f"{row['STATION']} ({int(row['FCOUNT']):,})",
                         color=color,
                         fill=True,
                         fill_color=color,
-                        fill_opacity=0.85,
-                        weight=2
+                        fill_opacity=0.85
                     ).add_to(m)
 
-                # Render Map with key to force refresh
-                map_return = st_folium(m, width=1300, height=700, key="solapur_map")
+                # Render Map
+                map_return = st_folium(m, width=1350, height=720, key="solapur_map_key")
 
                 # Click Handler
                 if map_return and map_return.get("last_object_clicked"):
@@ -257,6 +249,7 @@ else:
 
                     st.success(f"✅ Filtered to Station: **{selected_station}**")
                     filtered_df = filtered_df[filtered_df['STATION'] == selected_station]
+
     # TAB 3: CHARTS
     with tab_charts:
         col_c1, col_c2 = st.columns([3, 2])
@@ -288,10 +281,9 @@ else:
             display_df = filtered_df.copy()
             if 'Date' in display_df.columns:
                 display_df['Date'] = display_df['Date'].dt.date
-            st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}), 
+            st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}),
                         use_container_width=True, hide_index=True)
 
-            # Download
             st.markdown("---")
             output = BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
