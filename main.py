@@ -59,7 +59,7 @@ station_coords = {
     "KLBG": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},
     "WADI": {"lat": 17.05303569516522, "lon": 76.99204755925912, "code": "WADI"},
     "DD": {"lat": 18.460, "lon": 74.580, "code": "DD"},
-    "DRSV": {"lat": 18.180, "lon": 76.040, "code": "UMD"},
+    "DRSV": {"lat": 18.180, "lon": 76.040, "code": "DRSV"},
     "TKWD": {"lat": 17.700, "lon": 75.880, "code": "TKWD"},
     "MA": {"lat": 18.000, "lon": 75.520, "code": "MA"},
     "KEM": {"lat": 18.150, "lon": 75.350, "code": "KEM"},
