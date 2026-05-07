@@ -46,22 +46,25 @@ USERS = st.secrets["users"]
 
 # ====================== STATION COORDINATES ======================
 station_coords = {
-    "SOLAPUR": {"lat": 17.66461685325021, "lon": 75.8934378261056, "code": "SUR"},
-    "KURDUWADI": {"lat": 18.09222393527959, "lon": 75.41722014404814, "code": "KWV"},
-    "HOTGI": {"lat": 17.550, "lon": 76.000, "code": "HG"},
-    "MOHOL": {"lat": 17.810, "lon": 75.640, "code": "MO"},
-    "AKALKOT ROAD": {"lat": 17.520, "lon": 76.200, "code": "AKOR"},
+    "SUR": {"lat": 17.66461685325021, "lon": 75.8934378261056, "code": "SUR"},
+    "KWV": {"lat": 18.09222393527959, "lon": 75.41722014404814, "code": "KWV"},
+    "HG": {"lat": 17.550, "lon": 76.000, "code": "HG"},
+    "MO": {"lat": 17.810, "lon": 75.640, "code": "MO"},
+    "AKOR": {"lat": 17.520, "lon": 76.200, "code": "AKOR"},
     "BALE": {"lat": 17.680, "lon": 75.950, "code": "BALE"},
-    "PAKNI": {"lat": 17.620, "lon": 75.920, "code": "PK"},
-    "PANDHARPUR": {"lat": 17.670, "lon": 75.330, "code": "PVR"},
-    "BARSHI": {"lat": 18.230, "lon": 75.410, "code": "BTW"},
-    "LATUR": {"lat": 18.400, "lon": 76.570, "code": "LUR"},
-    "KALABURAGI": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},
-    "GULBARGA": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},
+    "PK": {"lat": 17.620, "lon": 75.920, "code": "PK"},
+    "PVR": {"lat": 17.670, "lon": 75.330, "code": "PVR"},
+    "BTW": {"lat": 18.230, "lon": 75.410, "code": "BTW"},
+    "LUR": {"lat": 18.400, "lon": 76.570, "code": "LUR"},
+    "KLBG": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},
     "WADI": {"lat": 17.05303569516522, "lon": 76.99204755925912, "code": "WADI"},
-    "DAUND": {"lat": 18.460, "lon": 74.580, "code": "DD"},
-    "OSMANABAD": {"lat": 18.180, "lon": 76.040, "code": "UMD"},
-    # Add more stations here...
+    "DD": {"lat": 18.460, "lon": 74.580, "code": "DD"},
+    "DRSV": {"lat": 18.180, "lon": 76.040, "code": "DRSV"},
+    "TKWD": {"lat": 17.700, "lon": 75.880, "code": "TKWD"},
+    "MA": {"lat": 18.000, "lon": 75.520, "code": "MA"},
+    "KEM": {"lat": 18.150, "lon": 75.350, "code": "KEM"},
+    "JEUR": {"lat": 18.300, "lon": 75.250, "code": "JEUR"},
+    "BGVN": {"lat": 18.300, "lon": 74.250, "code": "BGVN"},
 }
 
 # ====================== LOGIN ======================
