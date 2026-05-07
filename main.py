@@ -67,7 +67,7 @@ station_coords = {
     "KEM": {"lat": 18.150, "lon": 75.350, "code": "KEM"},
     "JEUR": {"lat": 18.300, "lon": 75.250, "code": "JEUR"},
     "PUNE": {"lat": 18.530, "lon": 73.870, "code": "PUNE"},
-    "BHIGWAN": {"lat": 18.300, "lon": 74.250, "code": "BGVN"},
+    "BHIGWAN": {"lat": 18.300, "lon": 74.250, "code": "BGVN"}
 }
 # ====================== LOGIN ======================
 def login_page():
