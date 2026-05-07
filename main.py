@@ -87,21 +87,32 @@ def get_road_route(start_coords, end_coords):
 
     try:
 
+        # Safely get API key
+        ORS_API_KEY = st.secrets.get("ORS_API_KEY", None)
+
+        if not ORS_API_KEY:
+            st.error("ORS_API_KEY not found in secrets.toml")
+            return None, None, None
+
+        # Initialize client
         client = openrouteservice.Client(
-            key=st.secrets["ORS_API_KEY"]
+            key=ORS_API_KEY
         )
 
+        # ORS expects [longitude, latitude]
         coords = [
             [start_coords[1], start_coords[0]],
             [end_coords[1], end_coords[0]]
         ]
 
+        # Get driving route
         route = client.directions(
             coordinates=coords,
             profile='driving-car',
             format='geojson'
         )
 
+        # Decode geometry
         geometry = route['features'][0]['geometry']['coordinates']
 
         decoded_route = [
@@ -109,19 +120,19 @@ def get_road_route(start_coords, end_coords):
             for coord in geometry
         ]
 
+        # Distance & duration
         summary = route['features'][0]['properties']['summary']
 
-        distance_km = summary['distance'] / 1000
-        duration_min = summary['duration'] / 60
+        distance_km = round(summary['distance'] / 1000, 2)
+        duration_min = round(summary['duration'] / 60, 1)
 
         return decoded_route, distance_km, duration_min
 
     except Exception as e:
 
-        st.error(f"Road Route Error: {e}")
+        st.error(f"Road Route Error: {str(e)}")
 
         return None, None, None
-
 # ====================== LOGIN ======================
 def login_page():
 
