@@ -46,26 +46,22 @@ USERS = st.secrets["users"]
 
 # ====================== STATION COORDINATES ======================
 station_coords = {
-    "SUR": {"lat": 17.66461685325021, "lon": 75.8934378261056, "code": "SUR"},
-    "KWV": {"lat": 18.09222393527959, "lon": 75.41722014404814, "code": "KWV"},
-    "HG": {"lat": 17.550, "lon": 76.000, "code": "HG"},
-    "MO": {"lat": 17.810, "lon": 75.640, "code": "MO"},
-    "AKOR": {"lat": 17.520, "lon": 76.200, "code": "AKOR"},
+    "SOLAPUR": {"lat": 17.66461685325021, "lon": 75.8934378261056, "code": "SUR"},
+    "KURDUWADI": {"lat": 18.09222393527959, "lon": 75.41722014404814, "code": "KWV"},
+    "HOTGI": {"lat": 17.550, "lon": 76.000, "code": "HG"},
+    "MOHOL": {"lat": 17.810, "lon": 75.640, "code": "MO"},
+    "AKALKOT ROAD": {"lat": 17.520, "lon": 76.200, "code": "AKOR"},
     "BALE": {"lat": 17.680, "lon": 75.950, "code": "BALE"},
-    "PK": {"lat": 17.620, "lon": 75.920, "code": "PK"},
-    "PVR": {"lat": 17.670, "lon": 75.330, "code": "PVR"},
-    "BTW": {"lat": 18.230, "lon": 75.410, "code": "BTW"},
-    "LUR": {"lat": 18.400, "lon": 76.570, "code": "LUR"},
-    "KLBG": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},
+    "PAKNI": {"lat": 17.620, "lon": 75.920, "code": "PK"},
+    "PANDHARPUR": {"lat": 17.670, "lon": 75.330, "code": "PVR"},
+    "BARSHI": {"lat": 18.230, "lon": 75.410, "code": "BTW"},
+    "LATUR": {"lat": 18.400, "lon": 76.570, "code": "LUR"},
+    "KALABURAGI": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},
+    "GULBARGA": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},
     "WADI": {"lat": 17.05303569516522, "lon": 76.99204755925912, "code": "WADI"},
-    "DD": {"lat": 18.460, "lon": 74.580, "code": "DD"},
-    "DRSV": {"lat": 18.180, "lon": 76.040, "code": "DRSV"},
-    "TKWD": {"lat": 17.700, "lon": 75.880, "code": "TKWD"},
-    "MA": {"lat": 18.000, "lon": 75.520, "code": "MA"},
-    "KEM": {"lat": 18.150, "lon": 75.350, "code": "KEM"},
-    "JEUR": {"lat": 18.300, "lon": 75.250, "code": "JEUR"},
-    "PUNE": {"lat": 18.530, "lon": 73.870, "code": "PUNE"},
-    "BGVN": {"lat": 18.300, "lon": 74.250, "code": "BGVN"},
+    "DAUND": {"lat": 18.460, "lon": 74.580, "code": "DD"},
+    "OSMANABAD": {"lat": 18.180, "lon": 76.040, "code": "UMD"},
+    # Add more stations here...
 }
 
 # ====================== LOGIN ======================
@@ -174,10 +170,10 @@ else:
                 st.metric("Top Station", top_row['STATION'], f"{top_row['FCOUNT']:,}")
         with c4: st.metric("Max FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).max():,}")
 
-    # TAB 2: INTERACTIVE MAP
+    # TAB 2: INTERACTIVE MAP (Most Stable Version)
     with tab_map:
         st.subheader("🗺️ Solapur Division Interactive Map")
-        st.caption("Click on any station marker to filter the entire dashboard")
+        st.caption("Click on any station marker to filter")
 
         if filtered_df.empty or 'STATION' not in filtered_df.columns:
             st.warning("No data available.")
@@ -185,21 +181,19 @@ else:
             st.info(f"**Stations in current data:** {filtered_df['STATION'].nunique()}")
 
             map_agg = filtered_df.groupby('STATION')['FCOUNT'].sum().reset_index()
-
             map_data = []
+
             for _, row in map_agg.iterrows():
                 station_name = str(row['STATION']).strip()
                 station_upper = station_name.upper()
-                
                 best_match = None
                 for coord_name, info in station_coords.items():
-                    coord_upper = coord_name.upper()
-                    if station_upper == coord_upper:           # Exact match first
+                    if station_upper == coord_name.upper():
                         best_match = info
                         break
-                    elif coord_upper in station_upper or station_upper in coord_upper:
+                    elif coord_name.upper() in station_upper or station_upper in coord_name.upper():
                         best_match = info
-                
+                        break
                 if best_match:
                     map_data.append({
                         'STATION': station_name,
@@ -212,26 +206,18 @@ else:
 
             if map_df.empty:
                 st.error("No matching stations found.")
-                st.write("Stations in data:", sorted(filtered_df['STATION'].unique()[:20]))
             else:
-                # Create Map
                 m = folium.Map(location=[17.85, 75.80], zoom_start=7.2, tiles="CartoDB positron")
 
-                max_fcount = map_df['FCOUNT'].max() if not map_df.empty else 1
+                max_fcount = map_df['FCOUNT'].max() or 1
                 for _, row in map_df.iterrows():
-                    intensity = row['FCOUNT'] / max_fcount if max_fcount > 0 else 0
+                    intensity = row['FCOUNT'] / max_fcount
                     color = "darkred" if intensity > 0.7 else "red" if intensity > 0.4 else "orange"
-
-                    popup_html = f"""
-                    <h4>{row['STATION']}</h4>
-                    <b>FCOUNT:</b> {int(row['FCOUNT']):,}<br>
-                    <b>Records:</b> {len(filtered_df[filtered_df['STATION'] == row['STATION']])}
-                    """
 
                     folium.CircleMarker(
                         location=[row['lat'], row['lon']],
                         radius=12 + intensity * 18,
-                        popup=folium.Popup(popup_html, max_width=300),
+                        popup=folium.Popup(f"<h4>{row['STATION']}</h4><b>FCOUNT:</b> {int(row['FCOUNT']):,}", max_width=300),
                         tooltip=f"{row['STATION']} ({int(row['FCOUNT']):,})",
                         color=color,
                         fill=True,
@@ -239,19 +225,18 @@ else:
                         fill_opacity=0.85
                     ).add_to(m)
 
-                map_return = st_folium(m, width=1350, height=720, key="solapur_map_final")
+                # Most stable rendering
+                map_return = st_folium(m, width=1350, height=680, key="folium_map_key")
 
                 if map_return and map_return.get("last_object_clicked"):
                     lat = map_return["last_object_clicked"]["lat"]
                     lon = map_return["last_object_clicked"]["lng"]
-
                     map_df['dist'] = ((map_df['lat'] - lat)**2 + (map_df['lon'] - lon)**2)**0.5
-                    selected_station = map_df.loc[map_df['dist'].idxmin(), 'STATION']
+                    selected = map_df.loc[map_df['dist'].idxmin(), 'STATION']
+                    st.success(f"✅ Filtered to: **{selected}**")
+                    filtered_df = filtered_df[filtered_df['STATION'] == selected]
 
-                    st.success(f"✅ Filtered to Station: **{selected_station}**")
-                    filtered_df = filtered_df[filtered_df['STATION'] == selected_station]
-
-    # TAB 3: CHARTS
+    # TAB 3 & 4 (unchanged)
     with tab_charts:
         col_c1, col_c2 = st.columns([3, 2])
         with col_c1:
@@ -273,7 +258,6 @@ else:
                             .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
                             use_container_width=True)
 
-    # TAB 4: DETAILED RECORDS
     with tab_data:
         st.subheader("📋 Detailed Records")
         if filtered_df.empty:
