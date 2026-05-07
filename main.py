@@ -179,14 +179,14 @@ else:
         with c4: st.metric("Max FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).max():,}")
 
     # TAB 2: INTERACTIVE MAP (Fixed & Simplified)
+        # ====================== TAB 2: INTERACTIVE MAP (SIMPLIFIED & FIXED) ======================
     with tab_map:
         st.subheader("🗺️ Solapur Division Interactive Map")
-        st.caption("Click on any station marker to filter data")
+        st.caption("Click on any station marker to filter the entire dashboard")
 
         if filtered_df.empty or 'STATION' not in filtered_df.columns:
             st.warning("No data available.")
         else:
-            # Debug Info
             st.info(f"**Stations in current data:** {filtered_df['STATION'].nunique()} | "
                     f"Total Records: {len(filtered_df)}")
 
@@ -209,10 +209,17 @@ else:
             map_df = pd.DataFrame(map_data)
 
             if map_df.empty:
-                st.error("No matching stations found between your data and coordinates.")
-                st.write("**Stations in your data:**", sorted(filtered_df['STATION'].unique()))
+                st.error("No matching station coordinates found.")
+                st.write("**Stations in your data:**", sorted(filtered_df['STATION'].unique()[:15]))
             else:
-                m = folium.Map(location=[17.85, 75.80], zoom_start=7.5, tiles="CartoDB positron")
+                # Create Map
+                m = folium.Map(
+                    location=[17.85, 75.80], 
+                    zoom_start=7.2, 
+                    tiles="CartoDB positron",
+                    width="100%",
+                    height="700px"
+                )
 
                 max_fcount = map_df['FCOUNT'].max()
                 for _, row in map_df.iterrows():
@@ -227,16 +234,18 @@ else:
 
                     folium.CircleMarker(
                         location=[row['lat'], row['lon']],
-                        radius=12 + intensity * 16,
-                        popup=folium.Popup(popup_html, max_width=300),
+                        radius=12 + (intensity * 18),
+                        popup=folium.Popup(popup_html, max_width=280),
                         tooltip=f"{row['STATION']} ({int(row['FCOUNT']):,})",
                         color=color,
                         fill=True,
                         fill_color=color,
-                        fill_opacity=0.85
+                        fill_opacity=0.85,
+                        weight=2
                     ).add_to(m)
 
-                map_return = st_folium(m, width=1350, height=720, returned_objects=["last_object_clicked"])
+                # Render Map with key to force refresh
+                map_return = st_folium(m, width=1300, height=700, key="solapur_map")
 
                 # Click Handler
                 if map_return and map_return.get("last_object_clicked"):
@@ -248,7 +257,6 @@ else:
 
                     st.success(f"✅ Filtered to Station: **{selected_station}**")
                     filtered_df = filtered_df[filtered_df['STATION'] == selected_station]
-
     # TAB 3: CHARTS
     with tab_charts:
         col_c1, col_c2 = st.columns([3, 2])
