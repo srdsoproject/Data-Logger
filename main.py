@@ -75,7 +75,7 @@ station_coords = {
     "DRSV": {"lat": 18.180, "lon": 76.040},
 }
 
-# ====================== LOGIN ======================
+# ====================== LOGIN & LOAD DATA ======================
 def login_page():
     col1, col2, col3 = st.columns([3, 3, 3])
     with col2:
@@ -92,7 +92,6 @@ def login_page():
                 else:
                     st.error("Invalid credentials!")
 
-# ====================== LOAD DATA ======================
 @st.cache_data(ttl=300)
 def load_data_from_gsheet():
     try:
@@ -146,48 +145,59 @@ else:
 
     df_original = load_data_from_gsheet()
 
-    # ====================== LIVE FILTERS (Dropdown Style) ======================
+    # ====================== LIVE FILTERS ======================
     st.markdown("### 🔍 Live Filters")
-    col_f = st.columns([2, 2, 2, 2, 2])
-
-    with col_f[0]:
-        search_term = st.text_input("🔎 Global Search", placeholder="Search any text...", key="global_search_key")
-    with col_f[1]:
+    
+    # First Row - Main Dropdowns
+    col1 = st.columns([2, 2, 2, 2])
+    with col1[0]:
         stations = sorted(df_original['STATION'].dropna().unique().tolist()) if 'STATION' in df_original.columns else []
-        selected_stations = st.multiselect("Station", options=stations, default=[], key="station_filter_key")
-    with col_f[2]:
+        selected_stations = st.multiselect("STATION", options=stations, default=[], key="stn_key")
+    with col1[1]:
         errors = sorted(df_original['Error'].dropna().unique().tolist()) if 'Error' in df_original.columns else []
-        selected_errors = st.multiselect("Error", options=errors, default=[], key="error_filter_key")
-    with col_f[3]:
+        selected_errors = st.multiselect("Error", options=errors, default=[], key="err_key")
+    with col1[2]:
         categories = sorted(df_original['Category'].dropna().unique().tolist()) if 'Category' in df_original.columns else []
-        selected_categories = st.multiselect("Category", options=categories, default=[], key="cat_filter_key")
-    with col_f[4]:
+        selected_categories = st.multiselect("Category", options=categories, default=[], key="cat_key")
+    with col1[3]:
         months = sorted(df_original['Month'].dropna().unique().tolist()) if 'Month' in df_original.columns else []
-        selected_months = st.multiselect("Month", options=months, default=[], key="month_filter_key")
+        selected_months = st.multiselect("Month", options=months, default=[], key="month_key")
 
-    # Second Row Filters
-    col_f2 = st.columns([2, 2, 2, 1])
-    with col_f2[0]:
-        fcount_min = st.number_input("Min FCOUNT", value=0, min_value=0, key="fcount_min_key")
-    with col_f2[1]:
-        fault_msg = st.text_input("Fault Message Contains", placeholder="Type fault message...", key="fault_key")
-    with col_f2[2]:
-        remark = st.text_input("Remark Contains", placeholder="Type remark...", key="remark_key")
-    with col_f2[3]:
+    # Second Row - Date + Others
+    col2 = st.columns([2, 2, 2, 2, 2])
+    with col2[0]:
+        if 'Date' in df_original.columns and not df_original.empty:
+            from_date = st.date_input("From Date", value=df_original['Date'].min().date(), key="from_date_key")
+    with col2[1]:
+        if 'Date' in df_original.columns and not df_original.empty:
+            to_date = st.date_input("To Date", value=df_original['Date'].max().date(), key="to_date_key")
+    with col2[2]:
+        fcount_min = st.number_input("Min FCOUNT", value=0, min_value=0, key="fcount_key")
+    with col2[3]:
+        fault_msg = st.text_input("FAULT MESSAGE Contains", placeholder="Type here...", key="fault_key")
+    with col2[4]:
+        remark = st.text_input("REMARK Contains", placeholder="Type here...", key="remark_key")
+
+    # Third Row
+    col3 = st.columns([3, 2, 1])
+    with col3[0]:
+        time_details = st.text_input("TIMEDETAILS Contains", placeholder="Type time details...", key="time_key")
+    with col3[1]:
         if st.button("🗑️ Clear All Filters", use_container_width=True):
             for key in list(st.session_state.keys()):
-                if any(x in key for x in ["filter_key", "_key"]):
-                    st.session_state[key] = [] if "filter" in key or "select" in key else ""
+                if any(x in key for x in ["_key"]):
+                    st.session_state[key] = [] if "stn" in key or "err" in key or "cat" in key or "month" in key else ""
             st.rerun()
 
     # ====================== APPLY FILTERS ======================
     filtered_df = df_original.copy()
 
-    if search_term:
-        mask = pd.Series(False, index=filtered_df.index)
-        for col in filtered_df.columns:
-            mask |= filtered_df[col].astype(str).str.contains(search_term, case=False, na=False)
-        filtered_df = filtered_df[mask]
+    # Date Filter
+    if 'Date' in filtered_df.columns:
+        filtered_df = filtered_df[
+            (filtered_df['Date'].dt.date >= from_date) &
+            (filtered_df['Date'].dt.date <= to_date)
+        ]
 
     if selected_stations:
         filtered_df = filtered_df[filtered_df['STATION'].isin(selected_stations)]
@@ -204,9 +214,10 @@ else:
         filtered_df = filtered_df[filtered_df['FAULT MESSAGE'].astype(str).str.contains(fault_msg, case=False, na=False)]
     if remark and 'REMARK' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['REMARK'].astype(str).str.contains(remark, case=False, na=False)]
+    if time_details and 'TIMEDETAILS' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['TIMEDETAILS'].astype(str).str.contains(time_details, case=False, na=False)]
 
     st.divider()
-
     # ====================== TABS ======================
     tab_overview, tab_map = st.tabs(["📊 Overview Dashboard", "🗺️ Map View"])
 
