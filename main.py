@@ -108,11 +108,13 @@ def load_data_from_gsheet():
         df.columns = df.columns.str.strip()
         df = df.loc[:, ~df.columns.str.lower().str.replace('.', '', regex=False)
                     .str.contains(r'^(?:sl|sr)\s*no', regex=True)]
+        
         if 'FCOUNT' in df.columns:
             df['FCOUNT'] = pd.to_numeric(df['FCOUNT'], errors='coerce').fillna(0).astype(int)
         if 'Date' in df.columns:
             df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-            df['Month'] = df['Date'].dt.strftime('%Y-%m')
+            df['Month'] = df['Date'].dt.strftime('%B')   # January, February, etc.
+        
         return df
     except Exception as e:
         st.error(f"Failed to load data: {e}")
@@ -145,49 +147,49 @@ else:
 
     df_original = load_data_from_gsheet()
 
-    # ====================== LIVE FILTERS ======================
+    # ====================== LIVE FILTERS (All Dropdowns) ======================
     st.markdown("### 🔍 Live Filters")
-    
-    # First Row - Main Dropdowns
-    col1 = st.columns([2, 2, 2, 2])
-    with col1[0]:
+
+    col_f1 = st.columns([2, 2, 2, 2])
+    with col_f1[0]:
         stations = sorted(df_original['STATION'].dropna().unique().tolist()) if 'STATION' in df_original.columns else []
         selected_stations = st.multiselect("STATION", options=stations, default=[], key="stn_key")
-    with col1[1]:
+    with col_f1[1]:
         errors = sorted(df_original['Error'].dropna().unique().tolist()) if 'Error' in df_original.columns else []
         selected_errors = st.multiselect("Error", options=errors, default=[], key="err_key")
-    with col1[2]:
+    with col_f1[2]:
         categories = sorted(df_original['Category'].dropna().unique().tolist()) if 'Category' in df_original.columns else []
         selected_categories = st.multiselect("Category", options=categories, default=[], key="cat_key")
-    with col1[3]:
+    with col_f1[3]:
         months = sorted(df_original['Month'].dropna().unique().tolist()) if 'Month' in df_original.columns else []
         selected_months = st.multiselect("Month", options=months, default=[], key="month_key")
 
-    # Second Row - Date + Others
-    col2 = st.columns([2, 2, 2, 2, 2])
-    with col2[0]:
-        if 'Date' in df_original.columns and not df_original.empty:
-            from_date = st.date_input("From Date", value=df_original['Date'].min().date(), key="from_date_key")
-    with col2[1]:
-        if 'Date' in df_original.columns and not df_original.empty:
-            to_date = st.date_input("To Date", value=df_original['Date'].max().date(), key="to_date_key")
-    with col2[2]:
-        fcount_min = st.number_input("Min FCOUNT", value=0, min_value=0, key="fcount_key")
-    with col2[3]:
-        fault_msg = st.text_input("FAULT MESSAGE Contains", placeholder="Type here...", key="fault_key")
-    with col2[4]:
-        remark = st.text_input("REMARK Contains", placeholder="Type here...", key="remark_key")
+    col_f2 = st.columns([2, 2, 2, 2])
+    with col_f2[0]:
+        fcount_list = sorted(df_original['FCOUNT'].dropna().unique().tolist()) if 'FCOUNT' in df_original.columns else []
+        selected_fcount = st.multiselect("FCOUNT", options=fcount_list, default=[], key="fcount_key")
+    with col_f2[1]:
+        fault_list = sorted(df_original['FAULT MESSAGE'].dropna().unique().tolist()) if 'FAULT MESSAGE' in df_original.columns else []
+        selected_fault = st.multiselect("FAULT MESSAGE", options=fault_list, default=[], key="fault_key")
+    with col_f2[2]:
+        remark_list = sorted(df_original['REMARK'].dropna().unique().tolist()) if 'REMARK' in df_original.columns else []
+        selected_remark = st.multiselect("REMARK", options=remark_list, default=[], key="remark_key")
+    with col_f2[3]:
+        time_list = sorted(df_original['TIMEDETAILS'].dropna().unique().tolist()) if 'TIMEDETAILS' in df_original.columns else []
+        selected_time = st.multiselect("TIMEDETAILS", options=time_list, default=[], key="time_key")
 
-    # Third Row
-    col3 = st.columns([3, 2, 1])
-    with col3[0]:
-        time_details = st.text_input("TIMEDETAILS Contains", placeholder="Type time details...", key="time_key")
-    with col3[1]:
+    # Date Range
+    col_date = st.columns([2, 2, 1])
+    with col_date[0]:
+        from_date = st.date_input("From Date", value=df_original['Date'].min().date() if not df_original.empty else pd.Timestamp.now().date(), key="from_date_key")
+    with col_date[1]:
+        to_date = st.date_input("To Date", value=df_original['Date'].max().date() if not df_original.empty else pd.Timestamp.now().date(), key="to_date_key")
+    with col_date[2]:
         if st.button("🗑️ Clear All Filters", use_container_width=True):
-            for key in list(st.session_state.keys()):
-                if any(x in key for x in ["_key"]):
-                    st.session_state[key] = [] if "stn" in key or "err" in key or "cat" in key or "month" in key else ""
+            st.session_state.clear()
             st.rerun()
+
+    st.divider()
 
     # ====================== APPLY FILTERS ======================
     filtered_df = df_original.copy()
@@ -207,17 +209,17 @@ else:
         filtered_df = filtered_df[filtered_df['Category'].isin(selected_categories)]
     if selected_months and 'Month' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['Month'].isin(selected_months)]
-
-    if fcount_min > 0 and 'FCOUNT' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['FCOUNT'] >= fcount_min]
-    if fault_msg and 'FAULT MESSAGE' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['FAULT MESSAGE'].astype(str).str.contains(fault_msg, case=False, na=False)]
-    if remark and 'REMARK' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['REMARK'].astype(str).str.contains(remark, case=False, na=False)]
-    if time_details and 'TIMEDETAILS' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['TIMEDETAILS'].astype(str).str.contains(time_details, case=False, na=False)]
+    if selected_fcount and 'FCOUNT' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['FCOUNT'].isin(selected_fcount)]
+    if selected_fault and 'FAULT MESSAGE' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['FAULT MESSAGE'].isin(selected_fault)]
+    if selected_remark and 'REMARK' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['REMARK'].isin(selected_remark)]
+    if selected_time and 'TIMEDETAILS' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['TIMEDETAILS'].isin(selected_time)]
 
     st.divider()
+
     # ====================== TABS ======================
     tab_overview, tab_map = st.tabs(["📊 Overview Dashboard", "🗺️ Map View"])
 
@@ -253,6 +255,7 @@ else:
                             .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
                             use_container_width=True)
 
+        # Error & Category Summary
         col_s1, col_s2 = st.columns(2)
         with col_s1:
             if 'Error' in filtered_df.columns and not filtered_df.empty:
@@ -282,7 +285,7 @@ else:
                 display_df['Date'] = display_df['Date'].dt.date
             st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}), use_container_width=True, hide_index=True)
 
-            # Download Section
+            # ====================== DOWNLOAD ======================
             st.markdown("---")
             col_btn1, col_btn2, col_btn3 = st.columns([1, 3, 1])
             with col_btn2:
