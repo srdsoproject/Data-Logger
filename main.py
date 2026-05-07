@@ -281,6 +281,8 @@ else:
                             .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
                             use_container_width=True)
 
+    #ref
+        # ====================== TAB 4: DETAILED RECORDS ======================
     with tab_data:
         st.subheader("📋 Detailed Records")
         if filtered_df.empty:
@@ -289,26 +291,75 @@ else:
             display_df = filtered_df.copy()
             if 'Date' in display_df.columns:
                 display_df['Date'] = display_df['Date'].dt.date
+
             st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}),
                         use_container_width=True, hide_index=True)
 
+            # ====================== PROFESSIONAL EXCEL DOWNLOAD ======================
             st.markdown("---")
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                display_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
-                summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
-                    Total_FCOUNT='sum', Records='count'
-                ).reset_index()
-                summary.to_excel(writer, index=False, sheet_name='Station_Summary')
+            col_btn1, col_btn2 = st.columns([1, 1])
 
-            output.seek(0)
-            st.download_button(
-                label="⬇️ Download Excel Report",
-                data=output.getvalue(),
-                file_name=f"Datalogger_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary",
-                use_container_width=True
-            )
+            with col_btn2:
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    # 1. Filtered Records
+                    display_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
 
+                    # 2. Station Summary
+                    station_summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
+                        Total_FCOUNT='sum', 
+                        Record_Count='count'
+                    ).sort_values('Total_FCOUNT', ascending=False).reset_index()
+                    station_summary.to_excel(writer, index=False, sheet_name='Station_Summary')
+
+                    # 3. Error Summary (if column exists)
+                    if 'Error' in filtered_df.columns:
+                        error_sum = filtered_df.groupby('Error')['FCOUNT'].agg(
+                            Total_FCOUNT='sum', Occurrences='count'
+                        ).sort_values('Total_FCOUNT', ascending=False).reset_index()
+                        error_sum.to_excel(writer, index=False, sheet_name='Error_Summary')
+
+                    # 4. Category Summary (if column exists)
+                    if 'Category' in filtered_df.columns:
+                        cat_sum = filtered_df.groupby('Category')['FCOUNT'].agg(
+                            Total_FCOUNT='sum', Occurrences='count'
+                        ).sort_values('Total_FCOUNT', ascending=False).reset_index()
+                        cat_sum.to_excel(writer, index=False, sheet_name='Category_Summary')
+
+                    # ====================== FORMATTING ======================
+                    # Apply professional formatting to all sheets
+                    header_format = writer.book.add_format({
+                        'bold': True,
+                        'bg_color': '#003087',
+                        'font_color': 'white',
+                        'border': 1,
+                        'align': 'center'
+                    })
+
+                    for sheet_name in writer.sheets.keys():
+                        worksheet = writer.sheets[sheet_name]
+                        df_sheet = pd.read_excel(output, sheet_name=sheet_name) if sheet_name != 'Filtered_Records' else display_df
+
+                        # Write header with formatting
+                        for col_num, value in enumerate(df_sheet.columns.values):
+                            worksheet.write(0, col_num, value, header_format)
+
+                        # Auto-adjust column widths
+                        for idx, col in enumerate(df_sheet.columns):
+                            max_len = max(
+                                df_sheet[col].astype(str).map(len).max(),
+                                len(str(col))
+                            ) + 6
+                            worksheet.set_column(idx, idx, min(max_len, 60))
+
+                output.seek(0)
+
+                st.download_button(
+                    label="⬇️ Download Professional Excel Report",
+                    data=output.getvalue(),
+                    file_name=f"Datalogger_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
+                    use_container_width=True
+                )
     st.caption("🚄 Safety Branch | Central Railway, Solapur Division")
