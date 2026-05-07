@@ -283,6 +283,7 @@ else:
 
     #ref
         # ====================== TAB 4: DETAILED RECORDS ======================
+        # ====================== TAB 4: DETAILED RECORDS ======================
     with tab_data:
         st.subheader("📋 Detailed Records")
         if filtered_df.empty:
@@ -297,69 +298,79 @@ else:
 
             # ====================== PROFESSIONAL EXCEL DOWNLOAD ======================
             st.markdown("---")
-            col_btn1, col_btn2 = st.columns([1, 1])
+            
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                # === Write All Sheets ===
+                display_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
 
-            with col_btn2:
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    # 1. Filtered Records
-                    display_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
+                # Station Summary
+                station_summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
+                    Total_FCOUNT='sum', 
+                    Record_Count='count'
+                ).sort_values('Total_FCOUNT', ascending=False).reset_index()
+                station_summary.to_excel(writer, index=False, sheet_name='Station_Summary')
 
-                    # 2. Station Summary
-                    station_summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
-                        Total_FCOUNT='sum', 
-                        Record_Count='count'
+                # Error Summary
+                if 'Error' in filtered_df.columns:
+                    error_sum = filtered_df.groupby('Error')['FCOUNT'].agg(
+                        Total_FCOUNT='sum', Occurrences='count'
                     ).sort_values('Total_FCOUNT', ascending=False).reset_index()
-                    station_summary.to_excel(writer, index=False, sheet_name='Station_Summary')
+                    error_sum.to_excel(writer, index=False, sheet_name='Error_Summary')
 
-                    # 3. Error Summary (if column exists)
-                    if 'Error' in filtered_df.columns:
-                        error_sum = filtered_df.groupby('Error')['FCOUNT'].agg(
-                            Total_FCOUNT='sum', Occurrences='count'
-                        ).sort_values('Total_FCOUNT', ascending=False).reset_index()
-                        error_sum.to_excel(writer, index=False, sheet_name='Error_Summary')
+                # Category Summary
+                if 'Category' in filtered_df.columns:
+                    cat_sum = filtered_df.groupby('Category')['FCOUNT'].agg(
+                        Total_FCOUNT='sum', Occurrences='count'
+                    ).sort_values('Total_FCOUNT', ascending=False).reset_index()
+                    cat_sum.to_excel(writer, index=False, sheet_name='Category_Summary')
 
-                    # 4. Category Summary (if column exists)
-                    if 'Category' in filtered_df.columns:
-                        cat_sum = filtered_df.groupby('Category')['FCOUNT'].agg(
-                            Total_FCOUNT='sum', Occurrences='count'
-                        ).sort_values('Total_FCOUNT', ascending=False).reset_index()
-                        cat_sum.to_excel(writer, index=False, sheet_name='Category_Summary')
+                # ====================== PROFESSIONAL FORMATTING ======================
+                header_format = writer.book.add_format({
+                    'bold': True,
+                    'bg_color': '#003087',
+                    'font_color': 'white',
+                    'border': 1,
+                    'align': 'center',
+                    'valign': 'vcenter'
+                })
 
-                    # ====================== FORMATTING ======================
-                    # Apply professional formatting to all sheets
-                    header_format = writer.book.add_format({
-                        'bold': True,
-                        'bg_color': '#003087',
-                        'font_color': 'white',
-                        'border': 1,
-                        'align': 'center'
-                    })
+                # Apply formatting to each sheet
+                for sheet_name in writer.sheets.keys():
+                    worksheet = writer.sheets[sheet_name]
+                    
+                    # Get the dataframe for this sheet
+                    if sheet_name == 'Filtered_Records':
+                        df_sheet = display_df
+                    elif sheet_name == 'Station_Summary':
+                        df_sheet = station_summary
+                    elif sheet_name == 'Error_Summary':
+                        df_sheet = error_sum
+                    elif sheet_name == 'Category_Summary':
+                        df_sheet = cat_sum
+                    else:
+                        continue
 
-                    for sheet_name in writer.sheets.keys():
-                        worksheet = writer.sheets[sheet_name]
-                        df_sheet = pd.read_excel(output, sheet_name=sheet_name) if sheet_name != 'Filtered_Records' else display_df
+                    # Write header with formatting
+                    for col_num, value in enumerate(df_sheet.columns.values):
+                        worksheet.write(0, col_num, value, header_format)
 
-                        # Write header with formatting
-                        for col_num, value in enumerate(df_sheet.columns.values):
-                            worksheet.write(0, col_num, value, header_format)
+                    # Auto-adjust column widths
+                    for idx, col in enumerate(df_sheet.columns):
+                        max_len = max(
+                            df_sheet[col].astype(str).map(len).max(),
+                            len(str(col))
+                        ) + 6
+                        worksheet.set_column(idx, idx, min(max_len, 65))
 
-                        # Auto-adjust column widths
-                        for idx, col in enumerate(df_sheet.columns):
-                            max_len = max(
-                                df_sheet[col].astype(str).map(len).max(),
-                                len(str(col))
-                            ) + 6
-                            worksheet.set_column(idx, idx, min(max_len, 60))
+            output.seek(0)
 
-                output.seek(0)
-
-                st.download_button(
-                    label="⬇️ Download Professional Excel Report",
-                    data=output.getvalue(),
-                    file_name=f"Datalogger_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    type="primary",
-                    use_container_width=True
-                )
+            st.download_button(
+                label="⬇️ Download Professional Excel Report",
+                data=output.getvalue(),
+                file_name=f"Datalogger_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+                use_container_width=True
+            )
     st.caption("🚄 Safety Branch | Central Railway, Solapur Division")
