@@ -59,7 +59,7 @@ station_coords = {
     "LATUR": {"lat": 18.400, "lon": 76.570, "code": "LUR"},
     "KALABURAGI": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},
     "GULBARGA": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},   # Alternate name
-    "WADI": {"lat": 17.070, "lon": 76.920, "code": "WADI"},
+    "WADI": {"lat": 17.052242340958625, "lon": 76.99162335197079, "code": "WADI"},
     "DAUND": {"lat": 18.460, "lon": 74.580, "code": "DD"},
     "OSMANABAD": {"lat": 18.180, "lon": 76.040, "code": "UMD"},
     "TIKEKARWADI": {"lat": 17.700, "lon": 75.880, "code": "TKWD"},
@@ -69,8 +69,7 @@ station_coords = {
     "PUNE": {"lat": 18.530, "lon": 73.870, "code": "PUNE"},
     "BHIGWAN": {"lat": 18.300, "lon": 74.250, "code": "BGVN"},
     # Add more as per your data
-}
-
+} 
 # ====================== LOGIN ======================
 def login_page():
     col1, col2, col3 = st.columns([3, 3, 3])
