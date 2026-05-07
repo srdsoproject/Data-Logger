@@ -45,22 +45,30 @@ SHEET_NAME = st.secrets["google_sheets"]["sheet_name"]
 USERS = st.secrets["users"]
 
 # ====================== SOLAPUR DIVISION STATIONS ======================
+# ====================== SOLAPUR DIVISION STATIONS (Improved) ======================
 station_coords = {
     "SOLAPUR": {"lat": 17.664, "lon": 75.893, "code": "SUR"},
     "KURDUWADI": {"lat": 18.090, "lon": 75.415, "code": "KWV"},
     "HOTGI": {"lat": 17.550, "lon": 76.000, "code": "HG"},
     "MOHOL": {"lat": 17.810, "lon": 75.640, "code": "MO"},
     "AKALKOT ROAD": {"lat": 17.520, "lon": 76.200, "code": "AKOR"},
+    "BALE": {"lat": 17.680, "lon": 75.950, "code": "BALE"},
+    "PAKNI": {"lat": 17.620, "lon": 75.920, "code": "PK"},
     "PANDHARPUR": {"lat": 17.670, "lon": 75.330, "code": "PVR"},
     "BARSHI": {"lat": 18.230, "lon": 75.410, "code": "BTW"},
     "LATUR": {"lat": 18.400, "lon": 76.570, "code": "LUR"},
     "KALABURAGI": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},
+    "GULBARGA": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},   # Alternate name
     "WADI": {"lat": 17.070, "lon": 76.920, "code": "WADI"},
     "DAUND": {"lat": 18.460, "lon": 74.580, "code": "DD"},
     "OSMANABAD": {"lat": 18.180, "lon": 76.040, "code": "UMD"},
-    "BALE": {"lat": 17.680, "lon": 75.950, "code": "BALE"},
-    "PAKNI": {"lat": 17.620, "lon": 75.920, "code": "PK"},
-    # Add more stations as needed
+    "TIKEKARWADI": {"lat": 17.700, "lon": 75.880, "code": "TKWD"},
+    "MADHA": {"lat": 18.000, "lon": 75.520, "code": "MA"},
+    "KEM": {"lat": 18.150, "lon": 75.350, "code": "KEM"},
+    "JEUR": {"lat": 18.300, "lon": 75.250, "code": "JEUR"},
+    "PUNE": {"lat": 18.530, "lon": 73.870, "code": "PUNE"},
+    "BHIGWAN": {"lat": 18.300, "lon": 74.250, "code": "BGVN"},
+    # Add more as per your data
 }
 
 # ====================== LOGIN ======================
