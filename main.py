@@ -184,11 +184,6 @@ else:
         from_date = st.date_input("From Date", value=df_original['Date'].min().date() if not df_original.empty else pd.Timestamp.now().date(), key="from_date_key")
     with col_date[1]:
         to_date = st.date_input("To Date", value=df_original['Date'].max().date() if not df_original.empty else pd.Timestamp.now().date(), key="to_date_key")
-    with col_date[2]:
-        if st.button("🗑️ Clear All Filters", use_container_width=True):
-            st.session_state.clear()
-            st.rerun()
-
     st.divider()
 
     # ====================== APPLY FILTERS ======================
