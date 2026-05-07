@@ -375,14 +375,131 @@ else:
                             .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
                             use_container_width=True)
 
+        #ref
         st.markdown("---")
         st.subheader("Detailed Records")
+        
         if filtered_df.empty:
             st.warning("No records found.")
         else:
             display_df = filtered_df.copy()
+        
             if 'Date' in display_df.columns:
                 display_df['Date'] = display_df['Date'].dt.date
-            st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}), use_container_width=True, hide_index=True)
+        
+            st.dataframe(
+                display_df.style.format({"FCOUNT": "{:,}"}),
+                use_container_width=True,
+                hide_index=True
+            )
+        
+            # ====================== DOWNLOAD ======================
+            st.markdown("---")
+        
+            col_btn1, col_btn2, col_btn3 = st.columns([1, 3, 1])
+        
+            with col_btn2:
+        
+                output = BytesIO()
+        
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        
+                    # Main Records
+                    display_df.to_excel(
+                        writer,
+                        index=False,
+                        sheet_name='Filtered_Records'
+                    )
+        
+                    # Station Summary
+                    station_summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
+                        Total_FCOUNT='sum',
+                        Record_Count='count'
+                    ).sort_values(
+                        'Total_FCOUNT',
+                        ascending=False
+                    ).reset_index()
+        
+                    station_summary.to_excel(
+                        writer,
+                        index=False,
+                        sheet_name='Station_Summary'
+                    )
+        
+                    # Error Summary
+                    if 'Error' in filtered_df.columns:
+                        error_sum = filtered_df.groupby('Error').agg(
+                            Total_FCOUNT=('FCOUNT', 'sum'),
+                            Occurrences=('FCOUNT', 'count')
+                        ).sort_values(
+                            'Total_FCOUNT',
+                            ascending=False
+                        ).reset_index()
+        
+                        error_sum.to_excel(
+                            writer,
+                            index=False,
+                            sheet_name='Error_Summary'
+                        )
+        
+                    # Category Summary
+                    if 'Category' in filtered_df.columns:
+                        cat_sum = filtered_df.groupby('Category').agg(
+                            Total_FCOUNT=('FCOUNT', 'sum'),
+                            Occurrences=('FCOUNT', 'count')
+                        ).sort_values(
+                            'Total_FCOUNT',
+                            ascending=False
+                        ).reset_index()
+        
+                        cat_sum.to_excel(
+                            writer,
+                            index=False,
+                            sheet_name='Category_Summary'
+                        )
+        
+                    # Professional Formatting
+                    for sheet_name, df_sheet in [
+                        ('Filtered_Records', display_df),
+                        ('Station_Summary', station_summary)
+                    ]:
+        
+                        if sheet_name in writer.sheets:
+        
+                            worksheet = writer.sheets[sheet_name]
+        
+                            header_format = writer.book.add_format({
+                                'bold': True,
+                                'bg_color': '#003087',
+                                'font_color': 'white',
+                                'border': 1,
+                                'align': 'center',
+                                'valign': 'vcenter'
+                            })
+        
+                            # Header Formatting
+                            for col_num, value in enumerate(df_sheet.columns.values):
+                                worksheet.write(0, col_num, value, header_format)
+        
+                            # Auto Column Width
+                            for idx, col in enumerate(df_sheet.columns):
+        
+                                max_len = max(
+                                    df_sheet[col].astype(str).map(len).max(),
+                                    len(str(col))
+                                ) + 5
+        
+                                worksheet.set_column(idx, idx, min(max_len, 60))
+        
+                output.seek(0)
+        
+                st.download_button(
+                    label="⬇️ Download Professional Excel Report",
+                    data=output.getvalue(),
+                    file_name=f"Map_Filtered_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
+                    use_container_width=True
+                )
 
     st.caption("🚄 Safety Branch | Central Railway, Solapur Division")
