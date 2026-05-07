@@ -44,8 +44,8 @@ SHEET_ID = st.secrets["google_sheets"]["sheet_id"]
 SHEET_NAME = st.secrets["google_sheets"]["sheet_name"]
 USERS = st.secrets["users"]
 
-# ====================== SOLAPUR DIVISION STATIONS ======================
 # ====================== SOLAPUR DIVISION STATIONS (Improved) ======================
+# ====================== SOLAPUR DIVISION STATION COORDINATES ======================
 station_coords = {
     "SOLAPUR": {"lat": 17.664, "lon": 75.893, "code": "SUR"},
     "KURDUWADI": {"lat": 18.090, "lon": 75.415, "code": "KWV"},
@@ -58,8 +58,8 @@ station_coords = {
     "BARSHI": {"lat": 18.230, "lon": 75.410, "code": "BTW"},
     "LATUR": {"lat": 18.400, "lon": 76.570, "code": "LUR"},
     "KALABURAGI": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},
-    "GULBARGA": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},   # Alternate name
-    "WADI": {"lat": 17.052242340958625, "lon": 76.99162335197079, "code": "WADI"},
+    "GULBARGA": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},
+    "WADI": {"lat": 17.0523859413162, "lon": 76.99164480964055, "code": "WADI"},
     "DAUND": {"lat": 18.460, "lon": 74.580, "code": "DD"},
     "OSMANABAD": {"lat": 18.180, "lon": 76.040, "code": "UMD"},
     "TIKEKARWADI": {"lat": 17.700, "lon": 75.880, "code": "TKWD"},
@@ -68,8 +68,7 @@ station_coords = {
     "JEUR": {"lat": 18.300, "lon": 75.250, "code": "JEUR"},
     "PUNE": {"lat": 18.530, "lon": 73.870, "code": "PUNE"},
     "BHIGWAN": {"lat": 18.300, "lon": 74.250, "code": "BGVN"},
-    # Add more as per your data
-} 
+}
 # ====================== LOGIN ======================
 def login_page():
     col1, col2, col3 = st.columns([3, 3, 3])
