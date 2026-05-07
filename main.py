@@ -7,7 +7,8 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import folium
 from streamlit_folium import st_folium
-from folium.plugins import MiniMap, AntPath
+from folium.plugins import MiniMap
+import openrouteservice
 
 # ====================== PAGE CONFIG ======================
 st.set_page_config(
@@ -81,13 +82,45 @@ station_coords = {
     "DD": {"lat": 18.46377428753149, "lon": 74.57928783698621},
 }
 
-# ====================== ROUTE CONNECTIVITY ======================
-route_sequence = [
-    "SUR", "BALE", "PK", "MVE", "MO", "MKPT",
-    "AAG", "WKA", "MA", "WDS", "KWV", "DHS",
-    "KEM", "BLNI", "JEUR", "PPJ", "WSB",
-    "KEU", "JNTR", "BGVN", "MLM", "BRB", "DD"
-]
+# ====================== ROAD ROUTE FUNCTION ======================
+def get_road_route(start_coords, end_coords):
+
+    try:
+
+        client = openrouteservice.Client(
+            key=st.secrets["ORS_API_KEY"]
+        )
+
+        coords = [
+            [start_coords[1], start_coords[0]],
+            [end_coords[1], end_coords[0]]
+        ]
+
+        route = client.directions(
+            coordinates=coords,
+            profile='driving-car',
+            format='geojson'
+        )
+
+        geometry = route['features'][0]['geometry']['coordinates']
+
+        decoded_route = [
+            [coord[1], coord[0]]
+            for coord in geometry
+        ]
+
+        summary = route['features'][0]['properties']['summary']
+
+        distance_km = summary['distance'] / 1000
+        duration_min = summary['duration'] / 60
+
+        return decoded_route, distance_km, duration_min
+
+    except Exception as e:
+
+        st.error(f"Road Route Error: {e}")
+
+        return None, None, None
 
 # ====================== LOGIN ======================
 def login_page():
@@ -149,7 +182,9 @@ def load_data_from_gsheet():
 
         client = gspread.authorize(credentials)
 
-        sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
+        sheet = client.open_by_key(
+            SHEET_ID
+        ).worksheet(SHEET_NAME)
 
         df = pd.DataFrame(sheet.get_all_records())
 
@@ -166,6 +201,7 @@ def load_data_from_gsheet():
             ).fillna(0).astype(int)
 
         if 'Date' in df.columns:
+
             df['Date'] = pd.to_datetime(
                 df['Date'],
                 errors='coerce'
@@ -176,23 +212,31 @@ def load_data_from_gsheet():
         return df
 
     except Exception as e:
+
         st.error(f"Failed to load data: {e}")
         st.stop()
 
 # ====================== REFRESH ======================
 def refresh_data():
+
     st.cache_data.clear()
-    st.success("✅ Data refreshed successfully!")
+
+    st.success(
+        "✅ Data refreshed successfully!"
+    )
+
     st.rerun()
 
-# ====================== LOGIN STATE ======================
+# ====================== SESSION ======================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
+# ====================== LOGIN PAGE ======================
 if not st.session_state.logged_in:
 
     login_page()
 
+# ====================== MAIN APP ======================
 else:
 
     # ====================== HEADER ======================
@@ -238,6 +282,7 @@ else:
     col_f1 = st.columns(4)
 
     with col_f1[0]:
+
         stations = sorted(
             df_original['STATION'].dropna().unique().tolist()
         )
@@ -248,6 +293,7 @@ else:
         )
 
     with col_f1[1]:
+
         errors = sorted(
             df_original['Error'].dropna().unique().tolist()
         ) if 'Error' in df_original.columns else []
@@ -258,6 +304,7 @@ else:
         )
 
     with col_f1[2]:
+
         categories = sorted(
             df_original['Category'].dropna().unique().tolist()
         ) if 'Category' in df_original.columns else []
@@ -268,6 +315,7 @@ else:
         )
 
     with col_f1[3]:
+
         months = sorted(
             df_original['Month'].dropna().unique().tolist()
         ) if 'Month' in df_original.columns else []
@@ -281,18 +329,20 @@ else:
     col_date = st.columns(2)
 
     with col_date[0]:
+
         from_date = st.date_input(
             "From Date",
             value=df_original['Date'].min().date()
         )
 
     with col_date[1]:
+
         to_date = st.date_input(
             "To Date",
             value=df_original['Date'].max().date()
         )
 
-    # ====================== APPLY FILTER ======================
+    # ====================== APPLY FILTERS ======================
     filtered_df = df_original.copy()
 
     filtered_df = filtered_df[
@@ -328,9 +378,7 @@ else:
         "🗺️ Map View"
     ])
 
-    # ==========================================================
-    # ====================== OVERVIEW ==========================
-    # ==========================================================
+    # ====================== OVERVIEW ======================
     with tab_overview:
 
         st.subheader("📊 Overview Dashboard")
@@ -338,7 +386,10 @@ else:
         c1, c2, c3, c4 = st.columns(4)
 
         with c1:
-            st.metric("Total Records", f"{len(filtered_df):,}")
+            st.metric(
+                "Total Records",
+                f"{len(filtered_df):,}"
+            )
 
         with c2:
             st.metric(
@@ -347,7 +398,9 @@ else:
             )
 
         with c3:
+
             if not filtered_df.empty:
+
                 top_row = filtered_df.loc[
                     filtered_df['FCOUNT'].idxmax()
                 ]
@@ -364,34 +417,32 @@ else:
                 f"{filtered_df['FCOUNT'].max():,}"
             )
 
-    # ==========================================================
-    # ====================== MAP VIEW ==========================
-    # ==========================================================
+    # ====================== MAP VIEW ======================
     with tab_map:
 
         st.subheader(
             "🗺️ Interactive Map View"
         )
 
-        # ====================== MAP MODE ======================
+        # ====================== MAP TYPE ======================
         map_type = st.radio(
             "🛰️ Select Map Mode",
             ["Normal", "Satellite"],
             horizontal=True
         )
 
-        # ====================== MAP CREATION ======================
+        # ====================== MAP ======================
         if map_type == "Satellite":
 
             m = folium.Map(
                 location=[17.85, 75.80],
-                zoom_start=7.2,
+                zoom_start=7,
                 tiles=None
             )
 
             folium.TileLayer(
                 tiles='https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-                attr='Google Satellite',
+                attr='Google',
                 name='Google Satellite',
                 max_zoom=20,
                 subdomains=['mt0', 'mt1', 'mt2', 'mt3']
@@ -401,18 +452,18 @@ else:
 
             m = folium.Map(
                 location=[17.85, 75.80],
-                zoom_start=7.2,
+                zoom_start=7,
                 tiles="CartoDB positron"
             )
 
         MiniMap(toggle_display=True).add_to(m)
 
-        # ====================== MAP DATA ======================
+        # ====================== MAP MARKERS ======================
         if not filtered_df.empty:
 
-            map_agg = filtered_df.groupby('STATION')[
-                'FCOUNT'
-            ].sum().reset_index()
+            map_agg = filtered_df.groupby(
+                'STATION'
+            )['FCOUNT'].sum().reset_index()
 
             map_data = []
 
@@ -433,7 +484,6 @@ else:
 
             map_df = pd.DataFrame(map_data)
 
-            # ====================== MARKERS ======================
             max_f = map_df['FCOUNT'].max() or 1
 
             for _, row in map_df.iterrows():
@@ -464,7 +514,7 @@ else:
 
             folium.LayerControl().add_to(m)
 
-            # ====================== RENDER MAP ======================
+            # ====================== INITIAL MAP RENDER ======================
             map_return = st_folium(
                 m,
                 width=1200,
@@ -496,62 +546,65 @@ else:
                     filtered_df['STATION'] == selected_station
                 ]
 
-                # ====================== ROUTE DRAW ======================
+                # ====================== ROAD CONNECTIVITY ======================
                 selected_station_upper = str(
                     selected_station
                 ).strip().upper()
 
-                if selected_station_upper in route_sequence:
+                if selected_station_upper in station_coords:
 
-                    start_index = route_sequence.index("SUR")
-                    end_index = route_sequence.index(
-                        selected_station_upper
+                    sur_coords = (
+                        station_coords["SUR"]["lat"],
+                        station_coords["SUR"]["lon"]
                     )
 
-                    if end_index >= start_index:
+                    destination_coords = (
+                        station_coords[selected_station_upper]["lat"],
+                        station_coords[selected_station_upper]["lon"]
+                    )
 
-                        route_stations = route_sequence[
-                            start_index:end_index + 1
-                        ]
+                    road_route, distance_km, duration_min = get_road_route(
+                        sur_coords,
+                        destination_coords
+                    )
 
-                        route_points = []
+                    if road_route:
 
-                        for stn in route_stations:
+                        folium.PolyLine(
+                            locations=road_route,
+                            color="blue",
+                            weight=6,
+                            opacity=0.85,
+                            tooltip=f"SUR → {selected_station}"
+                        ).add_to(m)
 
-                            if stn in station_coords:
+                        m.fit_bounds(road_route)
 
-                                route_points.append([
-                                    station_coords[stn]["lat"],
-                                    station_coords[stn]["lon"]
-                                ])
+                        st.success(
+                            f"""
+🚗 ROAD CONNECTIVITY
 
-                        if len(route_points) > 1:
+FROM: SUR (Solapur)
 
-                            AntPath(
-                                locations=route_points,
-                                color='blue',
-                                pulse_color='red',
-                                weight=5,
-                                delay=800
-                            ).add_to(m)
+TO: {selected_station}
 
-                            m.fit_bounds(route_points)
+📏 Distance: {distance_km:.1f} KM
 
-                        st.info(
-                            "🛤️ Route Connectivity:\n\n" +
-                            " → ".join(route_stations)
+⏱️ Approx Time: {duration_min:.0f} Minutes
+                            """
                         )
 
-                # ====================== RE-RENDER MAP ======================
-                st_folium(
-                    m,
-                    width=1200,
-                    height=700,
-                    key="folium_route_key"
-                )
+                        # Re-render map with route
+                        st_folium(
+                            m,
+                            width=1200,
+                            height=700,
+                            key="route_map"
+                        )
 
         # ====================== DETAILED RECORDS ======================
         st.markdown("---")
+
         st.subheader("Detailed Records")
 
         if filtered_df.empty:
@@ -602,45 +655,13 @@ else:
                     sheet_name='Station_Summary'
                 )
 
-                workbook = writer.book
-
-                header_format = workbook.add_format({
-                    'bold': True,
-                    'bg_color': '#003087',
-                    'font_color': 'white',
-                    'border': 1,
-                    'align': 'center'
-                })
-
-                for sheet_name, df_sheet in [
-                    ('Filtered_Records', display_df),
-                    ('Station_Summary', station_summary)
-                ]:
-
-                    worksheet = writer.sheets[sheet_name]
-
-                    for col_num, value in enumerate(
-                        df_sheet.columns.values
-                    ):
-                        worksheet.write(
-                            0,
-                            col_num,
-                            value,
-                            header_format
-                        )
-
             output.seek(0)
 
             st.download_button(
                 label="⬇️ Download Professional Excel Report",
                 data=output.getvalue(),
-                file_name=f"""
-                Datalogger_Report_
-                {pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx
-                """,
-                mime="""
-                application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
-                """,
+                file_name=f"Datalogger_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 type="primary",
                 use_container_width=True
             )
@@ -648,4 +669,3 @@ else:
     st.caption(
         "🚄 Safety Branch | Central Railway, Solapur Division"
     )
-
