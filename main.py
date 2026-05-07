@@ -146,7 +146,7 @@ else:
 
     df_original = load_data_from_gsheet()
 
-    # ====================== LIVE FILTERS ======================
+    # ====================== LIVE FILTERS (Dropdown Style) ======================
     st.markdown("### 🔍 Live Filters")
     col_f = st.columns([2, 2, 2, 2, 2])
 
@@ -165,22 +165,19 @@ else:
         months = sorted(df_original['Month'].dropna().unique().tolist()) if 'Month' in df_original.columns else []
         selected_months = st.multiselect("Month", options=months, default=[], key="month_filter_key")
 
-    # Additional Filters in second row
+    # Second Row Filters
     col_f2 = st.columns([2, 2, 2, 1])
     with col_f2[0]:
-        if 'FCOUNT' in df_original.columns:
-            fcount_min = st.number_input("Min FCOUNT", value=0, min_value=0)
+        fcount_min = st.number_input("Min FCOUNT", value=0, min_value=0, key="fcount_min_key")
     with col_f2[1]:
-        if 'FAULT MESSAGE' in df_original.columns:
-            fault_msg = st.text_input("Fault Message Contains", placeholder="Enter fault text", key="fault_key")
+        fault_msg = st.text_input("Fault Message Contains", placeholder="Type fault message...", key="fault_key")
     with col_f2[2]:
-        if 'REMARK' in df_original.columns:
-            remark = st.text_input("Remark Contains", placeholder="Enter remark", key="remark_key")
+        remark = st.text_input("Remark Contains", placeholder="Type remark...", key="remark_key")
     with col_f2[3]:
-        if st.button("Clear All Filters", use_container_width=True):
-            for key in st.session_state.keys():
-                if "_filter_key" in key or "_key" in key:
-                    st.session_state[key] = [] if "filter" in key else ""
+        if st.button("🗑️ Clear All Filters", use_container_width=True):
+            for key in list(st.session_state.keys()):
+                if any(x in key for x in ["filter_key", "_key"]):
+                    st.session_state[key] = [] if "filter" in key or "select" in key else ""
             st.rerun()
 
     # ====================== APPLY FILTERS ======================
@@ -201,7 +198,7 @@ else:
     if selected_months and 'Month' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['Month'].isin(selected_months)]
 
-    if 'FCOUNT' in filtered_df.columns and fcount_min > 0:
+    if fcount_min > 0 and 'FCOUNT' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['FCOUNT'] >= fcount_min]
     if fault_msg and 'FAULT MESSAGE' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['FAULT MESSAGE'].astype(str).str.contains(fault_msg, case=False, na=False)]
@@ -225,7 +222,6 @@ else:
         with c4: st.metric("Max FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).max():,}")
 
         st.markdown("---")
-
         col_g1, col_g2 = st.columns([3, 2])
         with col_g1:
             st.markdown('<p class="section-header">Top 15 Stations by FCOUNT</p>', unsafe_allow_html=True)
@@ -275,19 +271,17 @@ else:
                 display_df['Date'] = display_df['Date'].dt.date
             st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}), use_container_width=True, hide_index=True)
 
-            # ====================== DOWNLOAD ======================
+            # Download Section
             st.markdown("---")
             col_btn1, col_btn2, col_btn3 = st.columns([1, 3, 1])
             with col_btn2:
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                     display_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
-                    
                     station_summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
                         Total_FCOUNT='sum', Record_Count='count'
                     ).sort_values('Total_FCOUNT', ascending=False).reset_index()
                     station_summary.to_excel(writer, index=False, sheet_name='Station_Summary')
-
                     if 'Error' in filtered_df.columns:
                         error_sum.to_excel(writer, index=False, sheet_name='Error_Summary')
                     if 'Category' in filtered_df.columns:
@@ -318,7 +312,6 @@ else:
 
     with tab_map:
         st.subheader("🗺️ Interactive Map View - Click on Station to Filter")
-
         col_m1, col_m2 = st.columns([3, 2])
         with col_m1:
             if filtered_df.empty or 'STATION' not in filtered_df.columns:
@@ -328,7 +321,7 @@ else:
                 map_data = []
                 for _, row in map_agg.iterrows():
                     station_name = str(row['STATION']).strip().upper()
-                    best_match = next((info for name, info in station_coords.items() 
+                    best_match = next((info for name, info in station_coords.items()
                                      if name.upper() == station_name or name.upper() in station_name), None)
                     if best_match:
                         map_data.append({
@@ -355,7 +348,6 @@ else:
 
                     map_return = st_folium(m, width=900, height=650, key="folium_key")
 
-                    # Map Click Filter
                     if map_return and map_return.get("last_object_clicked"):
                         lat = map_return["last_object_clicked"]["lat"]
                         lon = map_return["last_object_clicked"]["lng"]
