@@ -113,6 +113,7 @@ def load_data_from_gsheet():
             df['FCOUNT'] = pd.to_numeric(df['FCOUNT'], errors='coerce').fillna(0).astype(int)
         if 'Date' in df.columns:
             df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+            df['Month'] = df['Date'].dt.strftime('%Y-%m')
         return df
     except Exception as e:
         st.error(f"Failed to load data: {e}")
@@ -145,26 +146,44 @@ else:
 
     df_original = load_data_from_gsheet()
 
-    # ====================== LIVE FILTERS (Placed Once) ======================
+    # ====================== LIVE FILTERS ======================
     st.markdown("### 🔍 Live Filters")
-    col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 2, 1])
+    col_f = st.columns([2, 2, 2, 2, 2])
 
-    with col_f1:
-        search_term = st.text_input("🔎 Global Search", placeholder="Search station, error...", key="global_search_key")
-    with col_f2:
+    with col_f[0]:
+        search_term = st.text_input("🔎 Global Search", placeholder="Search any text...", key="global_search_key")
+    with col_f[1]:
         stations = sorted(df_original['STATION'].dropna().unique().tolist()) if 'STATION' in df_original.columns else []
-        selected_stations = st.multiselect("Select Stations", options=stations, default=[], placeholder="All Stations", key="station_filter_key")
-    with col_f3:
+        selected_stations = st.multiselect("Station", options=stations, default=[], key="station_filter_key")
+    with col_f[2]:
+        errors = sorted(df_original['Error'].dropna().unique().tolist()) if 'Error' in df_original.columns else []
+        selected_errors = st.multiselect("Error", options=errors, default=[], key="error_filter_key")
+    with col_f[3]:
         categories = sorted(df_original['Category'].dropna().unique().tolist()) if 'Category' in df_original.columns else []
-        selected_categories = st.multiselect("Select Categories", options=categories, default=[], placeholder="All Categories", key="category_filter_key")
-    with col_f4:
+        selected_categories = st.multiselect("Category", options=categories, default=[], key="cat_filter_key")
+    with col_f[4]:
+        months = sorted(df_original['Month'].dropna().unique().tolist()) if 'Month' in df_original.columns else []
+        selected_months = st.multiselect("Month", options=months, default=[], key="month_filter_key")
+
+    # Additional Filters in second row
+    col_f2 = st.columns([2, 2, 2, 1])
+    with col_f2[0]:
+        if 'FCOUNT' in df_original.columns:
+            fcount_min = st.number_input("Min FCOUNT", value=0, min_value=0)
+    with col_f2[1]:
+        if 'FAULT MESSAGE' in df_original.columns:
+            fault_msg = st.text_input("Fault Message Contains", placeholder="Enter fault text", key="fault_key")
+    with col_f2[2]:
+        if 'REMARK' in df_original.columns:
+            remark = st.text_input("Remark Contains", placeholder="Enter remark", key="remark_key")
+    with col_f2[3]:
         if st.button("Clear All Filters", use_container_width=True):
-            st.session_state.global_search_key = ""
-            st.session_state.station_filter_key = []
-            st.session_state.category_filter_key = []
+            for key in st.session_state.keys():
+                if "_filter_key" in key or "_key" in key:
+                    st.session_state[key] = [] if "filter" in key else ""
             st.rerun()
 
-    # Apply Filters
+    # ====================== APPLY FILTERS ======================
     filtered_df = df_original.copy()
 
     if search_term:
@@ -175,21 +194,19 @@ else:
 
     if selected_stations:
         filtered_df = filtered_df[filtered_df['STATION'].isin(selected_stations)]
-
+    if selected_errors and 'Error' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['Error'].isin(selected_errors)]
     if selected_categories and 'Category' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['Category'].isin(selected_categories)]
+    if selected_months and 'Month' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['Month'].isin(selected_months)]
 
-    if 'Date' in filtered_df.columns and not filtered_df.empty:
-        col_d1, col_d2 = st.columns(2)
-        with col_d1:
-            from_date = st.date_input("From Date", value=filtered_df['Date'].min().date(), key="from_date_key")
-        with col_d2:
-            to_date = st.date_input("To Date", value=filtered_df['Date'].max().date(), key="to_date_key")
-        
-        filtered_df = filtered_df[
-            (filtered_df['Date'].dt.date >= from_date) &
-            (filtered_df['Date'].dt.date <= to_date)
-        ]
+    if 'FCOUNT' in filtered_df.columns and fcount_min > 0:
+        filtered_df = filtered_df[filtered_df['FCOUNT'] >= fcount_min]
+    if fault_msg and 'FAULT MESSAGE' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['FAULT MESSAGE'].astype(str).str.contains(fault_msg, case=False, na=False)]
+    if remark and 'REMARK' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['REMARK'].astype(str).str.contains(remark, case=False, na=False)]
 
     st.divider()
 
@@ -198,8 +215,7 @@ else:
 
     with tab_overview:
         st.subheader("📊 Overview Dashboard")
-
-        c1, c2, c3, c4 = st.columns(4)
+       c1, c2, c3, c4 = st.columns(4)
         with c1: st.metric("Total Records", f"{len(filtered_df):,}")
         with c2: st.metric("Total FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).sum():,}")
         with c3:
@@ -301,7 +317,7 @@ else:
                 )
 
     with tab_map:
-        st.subheader("🗺️ Interactive Map View")
+        st.subheader("🗺️ Interactive Map View - Click on Station to Filter")
 
         col_m1, col_m2 = st.columns([3, 2])
         with col_m1:
@@ -336,7 +352,17 @@ else:
                             tooltip=f"{row['STATION']} ({int(row['FCOUNT']):,})",
                             color=color, fill=True, fill_color=color, fill_opacity=0.85
                         ).add_to(m)
-                    st_folium(m, width=900, height=650, key="folium_key")
+
+                    map_return = st_folium(m, width=900, height=650, key="folium_key")
+
+                    # Map Click Filter
+                    if map_return and map_return.get("last_object_clicked"):
+                        lat = map_return["last_object_clicked"]["lat"]
+                        lon = map_return["last_object_clicked"]["lng"]
+                        map_df['dist'] = ((map_df['lat'] - lat)**2 + (map_df['lon'] - lon)**2)**0.5
+                        selected_station = map_df.loc[map_df['dist'].idxmin(), 'STATION']
+                        st.success(f"✅ Station Selected: **{selected_station}**")
+                        filtered_df = filtered_df[filtered_df['STATION'] == selected_station]
 
         with col_m2:
             st.subheader("Station Summary")
