@@ -44,10 +44,10 @@ SHEET_ID = st.secrets["google_sheets"]["sheet_id"]
 SHEET_NAME = st.secrets["google_sheets"]["sheet_name"]
 USERS = st.secrets["users"]
 
-# ====================== STATION COORDINATES ======================
+# ====================== STATION COORDINATES (Updated) ======================
 station_coords = {
     "SOLAPUR": {"lat": 17.664, "lon": 75.893, "code": "SUR"},
-    "KURDUWADI": {"lat": 18.090, "lon": 75.415, "code": "KWV"},
+    "KURDUWADI": {"lat": 18.092292541201378, "lon": 75.41666755635939, "code": "KWV"},
     "HOTGI": {"lat": 17.550, "lon": 76.000, "code": "HG"},
     "MOHOL": {"lat": 17.810, "lon": 75.640, "code": "MO"},
     "AKALKOT ROAD": {"lat": 17.520, "lon": 76.200, "code": "AKOR"},
@@ -58,7 +58,7 @@ station_coords = {
     "LATUR": {"lat": 18.400, "lon": 76.570, "code": "LUR"},
     "KALABURAGI": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},
     "GULBARGA": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},
-    "WADI": {"lat": 17.05303569516522, "lon": 76.99208511018121, "code": "WADI"},
+    "WADI": {"lat": 17.05303569516522, "lon": 76.99204755925912, "code": "WADI"},
     "DAUND": {"lat": 18.460, "lon": 74.580, "code": "DD"},
     "OSMANABAD": {"lat": 18.180, "lon": 76.040, "code": "UMD"},
     "TIKEKARWADI": {"lat": 17.700, "lon": 75.880, "code": "TKWD"},
@@ -124,7 +124,6 @@ if "logged_in" not in st.session_state:
 if not st.session_state.logged_in:
     login_page()
 else:
-    # Header
     col1, col2, col3 = st.columns([3, 3, 1])
     with col2:
         st.image(IR_LOGO_URL, width=220)
@@ -133,7 +132,6 @@ else:
     st.caption(f"**Logged in as:** {st.session_state.user_name}")
     st.divider()
 
-    # Sidebar
     with st.sidebar:
         st.header("🔧 Controls")
         if st.button("🔄 Refresh Data", type="primary", use_container_width=True):
@@ -141,7 +139,6 @@ else:
 
     df_original = load_data_from_gsheet()
 
-    # ====================== TABS ======================
     tab_overview, tab_map, tab_charts, tab_data = st.tabs([
         "📊 Overview", "🗺️ Interactive Map", "📈 Charts", "📋 Detailed Records"
     ])
@@ -178,7 +175,7 @@ else:
                 st.metric("Top Station", top_row['STATION'], f"{top_row['FCOUNT']:,}")
         with c4: st.metric("Max FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).max():,}")
 
-    # TAB 2: INTERACTIVE MAP
+    # TAB 2: INTERACTIVE MAP (Improved Strict Matching)
     with tab_map:
         st.subheader("🗺️ Solapur Division Interactive Map")
         st.caption("Click on any station marker to filter the entire dashboard")
@@ -186,32 +183,45 @@ else:
         if filtered_df.empty or 'STATION' not in filtered_df.columns:
             st.warning("No data available.")
         else:
-            st.info(f"**Stations in current data:** {filtered_df['STATION'].nunique()} | "
-                    f"Total Records: {len(filtered_df)}")
+            st.info(f"**Stations in current data:** {filtered_df['STATION'].nunique()}")
 
-            # Prepare Map Data
             map_agg = filtered_df.groupby('STATION')['FCOUNT'].sum().reset_index()
 
             map_data = []
             for _, row in map_agg.iterrows():
-                station_upper = str(row['STATION']).strip().upper()
+                station_name = str(row['STATION']).strip()
+                station_upper = station_name.upper()
+                
+                best_match = None
+                best_score = 0
+                
                 for coord_name, info in station_coords.items():
-                    if coord_name.upper() in station_upper or station_upper in coord_name.upper():
-                        map_data.append({
-                            'STATION': row['STATION'],
-                            'FCOUNT': row['FCOUNT'],
-                            'lat': info['lat'],
-                            'lon': info['lon']
-                        })
+                    coord_upper = coord_name.upper()
+                    # Exact match gets highest priority
+                    if station_upper == coord_upper:
+                        best_match = info
                         break
+                    # Partial match with length check to avoid "WADI" matching "KURDUWADI"
+                    elif coord_upper in station_upper or station_upper in coord_upper:
+                        score = len(coord_upper)
+                        if score > best_score:
+                            best_score = score
+                            best_match = info
+                
+                if best_match:
+                    map_data.append({
+                        'STATION': station_name,
+                        'FCOUNT': row['FCOUNT'],
+                        'lat': best_match['lat'],
+                        'lon': best_match['lon']
+                    })
 
             map_df = pd.DataFrame(map_data)
 
             if map_df.empty:
-                st.error("No matching station coordinates found.")
-                st.write("**Stations in your data:**", sorted(filtered_df['STATION'].unique()[:20]))
+                st.error("No matching stations found.")
+                st.write("Stations in data:", sorted(filtered_df['STATION'].unique()[:15]))
             else:
-                # Create Folium Map
                 m = folium.Map(location=[17.85, 75.80], zoom_start=7.2, tiles="CartoDB positron")
 
                 max_fcount = map_df['FCOUNT'].max()
@@ -236,10 +246,8 @@ else:
                         fill_opacity=0.85
                     ).add_to(m)
 
-                # Render Map
-                map_return = st_folium(m, width=1350, height=720, key="solapur_map_key")
+                map_return = st_folium(m, width=1350, height=720, key="solapur_map_v2")
 
-                # Click Handler
                 if map_return and map_return.get("last_object_clicked"):
                     lat = map_return["last_object_clicked"]["lat"]
                     lon = map_return["last_object_clicked"]["lng"]
@@ -250,7 +258,7 @@ else:
                     st.success(f"✅ Filtered to Station: **{selected_station}**")
                     filtered_df = filtered_df[filtered_df['STATION'] == selected_station]
 
-    # TAB 3: CHARTS
+    # TAB 3 & 4 remain same as before...
     with tab_charts:
         col_c1, col_c2 = st.columns([3, 2])
         with col_c1:
@@ -272,7 +280,6 @@ else:
                             .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
                             use_container_width=True)
 
-    # TAB 4: DETAILED RECORDS
     with tab_data:
         st.subheader("📋 Detailed Records")
         if filtered_df.empty:
