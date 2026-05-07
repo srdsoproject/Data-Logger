@@ -29,7 +29,7 @@ st.markdown("""
         margin-bottom: 0.2rem;
     }
     .subtitle { font-size: 1.4rem; color: #003087; text-align: center; font-weight: 500; margin-top: -0.4rem; }
-    .section-header { font-size: 1.6rem; font-weight: 600; color: #003087; margin-top: 1.5rem; }
+    .section-header { font-size: 1.6rem; font-weight: 600; color: #003087; margin: 1.2rem 0 0.5rem 0; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -40,83 +40,17 @@ SHEET_NAME = st.secrets["google_sheets"]["sheet_name"]
 USERS = st.secrets["users"]
 
 # ====================== STATION COORDINATES ======================
-station_coords = {
-    "WADI": {"lat": 17.05303569516522, "lon": 76.99204755925912, "code": "WADI"},
-    "KLBG": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},
-    "AKOR": {"lat": 17.520, "lon": 76.200, "code": "AKOR"},
-    "HG": {"lat": 17.550, "lon": 76.000, "code": "HG"},
-    "TKWD": {"lat": 17.700, "lon": 75.880, "code": "TKWD"},
-    "SUR": {"lat": 17.66461685325021, "lon": 75.8934378261056, "code": "SUR"},
-    "BALE": {"lat": 17.67603540641838, "lon": 75.84576721149409, "code": "BALE"},
-    "PK": {"lat": 17.725604941699864, "lon": 75.77920258081592, "code": "PK"},
-    "MVE": {"lat": 17.742039265808994, "lon": 75.70628187232433, "code": "MVE"},
-    "MO": {"lat": 17.805775747199327, "lon": 75.67562640965197, "code": "MO"},
-    "MKPT": {"lat": 17.876348021475454, "lon": 75.63508125440458, "code": "MKPT"},
-    "AAG": {"lat": 17.928577532396076, "lon": 75.60830992499343, "code": "AAG"},
-    "WKA": {"lat": 17.98027395125776, "lon": 75.58849669615935, "code": "WKA"},
-    "MA": {"lat": 18.030290184953223, "lon": 75.54656926732524, "code": "MA"},
-    "WDS": {"lat": 18.06648098233323, "lon": 75.4889207249956, "code": "WDS"},
-    "KWV": {"lat": 18.09222393527959, "lon": 75.41722014404814, "code": "KWV"},
-    "DHS": {"lat": 18.12955847910344, "lon": 75.33424703664774, "code": "KWV"},
-    "KEM": {"lat": 18.176853463202423, "lon": 75.27468572499728, "code": "KEM"},
-    "BLNI": {"lat": 18.210581627334815, "lon": 75.20717558551391, "code": "BLNI"},
-    "JEUR": {"lat": 18.260861679574607, "lon": 75.16233780965912, "code": "JEUR"},
-    "PPJ": {"lat": 18.291563656218496, "lon": 75.09802889616424, "code": "PPJ"},
-    "WSB": {"lat": 18.280298357551207, "lon":75.01623199616414, "code": "WSB"},
-    "KEU": {"lat": 18.290095464926527, "lon":74.95250352348742, "code": "KEU"},
-    "JNTR": {"lat": 18.324947721792178, "lon":74.8776102384951, "code": "JNTR"},
-    "BGVN": {"lat": 18.316891480050153, "lon":74.77494537837337, "code": "BGVN"},
-    "MLM": {"lat": 18.368948833491366, "lon":74.72444118537874, "code": "MLM"},
-    "BRB": {"lat": 18.407915112523582, "lon":74.6490078310967, "code": "BRB"},
-    "PVR": {"lat": 17.670, "lon": 75.330, "code": "PVR"},
-    "BTW": {"lat": 18.230, "lon": 75.410, "code": "BTW"},
-    "LUR": {"lat": 18.400, "lon": 76.570, "code": "LUR"},
-    "DD": {"lat": 18.460, "lon": 74.580, "code": "DD"},
-    "DRSV": {"lat": 18.180, "lon": 76.040, "code": "DRSV"},
-}
+station_coords = { ... }   # Keep your existing station_coords dictionary here
 
-# ====================== LOGIN ======================
+# ====================== LOGIN & DATA LOAD (unchanged) ======================
 def login_page():
-    col1, col2, col3 = st.columns([3, 3, 3])
-    with col2:
-        st.subheader("🔐 Secure Login")
-        with st.form("login_form", clear_on_submit=False):
-            email = st.text_input("Username / Email", placeholder="Enter your ID")
-            password = st.text_input("Password", type="password", placeholder="Enter Password")
-            if st.form_submit_button("Login", type="primary", use_container_width=True):
-                if email in USERS and password == USERS[email].get("password"):
-                    st.session_state.logged_in = True
-                    st.session_state.user_name = USERS[email].get("name")
-                    st.success(f"Welcome, {st.session_state.user_name}!")
-                    st.rerun()
-                else:
-                    st.error("Invalid credentials!")
+    # ... (keep your existing login_page function)
+    pass
 
-# ====================== LOAD DATA ======================
 @st.cache_data(ttl=300)
 def load_data_from_gsheet():
-    try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        credentials = ServiceAccountCredentials.from_json_keyfile_dict(
-            st.secrets["gcp_service_account"], scope
-        )
-        client = gspread.authorize(credentials)
-        sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
-        df = pd.DataFrame(sheet.get_all_records())
-        if df.empty:
-            st.error("Google Sheet is empty!")
-            st.stop()
-        df.columns = df.columns.str.strip()
-        df = df.loc[:, ~df.columns.str.lower().str.replace('.', '', regex=False)
-                    .str.contains(r'^(?:sl|sr)\s*no', regex=True)]
-        if 'FCOUNT' in df.columns:
-            df['FCOUNT'] = pd.to_numeric(df['FCOUNT'], errors='coerce').fillna(0).astype(int)
-        if 'Date' in df.columns:
-            df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-        return df
-    except Exception as e:
-        st.error(f"Failed to load data: {e}")
-        st.stop()
+    # ... (keep your existing function)
+    pass
 
 def refresh_data():
     st.cache_data.clear()
@@ -145,30 +79,39 @@ else:
 
     df_original = load_data_from_gsheet()
 
-    # ====================== MAIN TABS (Now Only 2) ======================
     tab_overview, tab_map = st.tabs(["📊 Overview Dashboard", "🗺️ Map View"])
 
-    # ====================== COMMON FILTER FUNCTION ======================
-    def apply_filters(df):
+    # ====================== FILTER FUNCTION (Single Source of Truth) ======================
+    def get_filtered_df():
         with st.expander("🔍 Live Filters", expanded=True):
             col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 2, 1])
 
             with col_f1:
-                search_term = st.text_input("🔎 Global Search", placeholder="Search station, error...", key="global_search")
+                search_term = st.text_input("🔎 Global Search", 
+                                          placeholder="Search station, error...", 
+                                          key="global_search_key")
             with col_f2:
                 stations = sorted(df_original['STATION'].dropna().unique().tolist()) if 'STATION' in df_original.columns else []
-                selected_stations = st.multiselect("Select Stations", options=stations, default=[], placeholder="All Stations", key="station_filter")
+                selected_stations = st.multiselect("Select Stations", 
+                                                 options=stations, 
+                                                 default=[], 
+                                                 placeholder="All Stations",
+                                                 key="station_filter_key")
             with col_f3:
                 categories = sorted(df_original['Category'].dropna().unique().tolist()) if 'Category' in df_original.columns else []
-                selected_categories = st.multiselect("Select Categories", options=categories, default=[], placeholder="All Categories", key="cat_filter")
+                selected_categories = st.multiselect("Select Categories", 
+                                                   options=categories, 
+                                                   default=[], 
+                                                   placeholder="All Categories",
+                                                   key="category_filter_key")
             with col_f4:
                 if st.button("Clear All Filters", use_container_width=True):
-                    st.session_state.global_search = ""
-                    if "station_filter" in st.session_state: st.session_state.station_filter = []
-                    if "cat_filter" in st.session_state: st.session_state.cat_filter = []
+                    for key in ["global_search_key", "station_filter_key", "category_filter_key", "from_date_key", "to_date_key"]:
+                        if key in st.session_state:
+                            st.session_state[key] = [] if "filter" in key else ""
                     st.rerun()
 
-            filtered = df.copy()
+            filtered = df_original.copy()
 
             if search_term:
                 mask = pd.Series(False, index=filtered.index)
@@ -178,15 +121,21 @@ else:
 
             if selected_stations:
                 filtered = filtered[filtered['STATION'].isin(selected_stations)]
+
             if selected_categories and 'Category' in filtered.columns:
                 filtered = filtered[filtered['Category'].isin(selected_categories)]
 
             if 'Date' in filtered.columns and not filtered.empty:
                 col_d1, col_d2 = st.columns(2)
                 with col_d1:
-                    from_date = st.date_input("From Date", value=filtered['Date'].min().date(), key="from_date")
+                    from_date = st.date_input("From Date", 
+                                            value=filtered['Date'].min().date(), 
+                                            key="from_date_key")
                 with col_d2:
-                    to_date = st.date_input("To Date", value=filtered['Date'].max().date(), key="to_date")
+                    to_date = st.date_input("To Date", 
+                                          value=filtered['Date'].max().date(), 
+                                          key="to_date_key")
+                
                 filtered = filtered[
                     (filtered['Date'].dt.date >= from_date) &
                     (filtered['Date'].dt.date <= to_date)
@@ -196,7 +145,7 @@ else:
     # ====================== TAB 1: OVERVIEW DASHBOARD ======================
     with tab_overview:
         st.subheader("📊 Overview Dashboard")
-        filtered_df = apply_filters(df_original)
+        filtered_df = get_filtered_df()
 
         # Metrics
         c1, c2, c3, c4 = st.columns(4)
@@ -210,7 +159,6 @@ else:
 
         st.markdown("---")
 
-        # Charts
         col_g1, col_g2 = st.columns([3, 2])
         with col_g1:
             st.markdown('<p class="section-header">Top 15 Stations by FCOUNT</p>', unsafe_allow_html=True)
@@ -231,27 +179,27 @@ else:
                             .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
                             use_container_width=True)
 
-        # Error & Category Summary
+        # Error & Category Summaries
         col_s1, col_s2 = st.columns(2)
         with col_s1:
             if 'Error' in filtered_df.columns and not filtered_df.empty:
                 st.markdown('<p class="section-header">Error Summary</p>', unsafe_allow_html=True)
-                error_sum = filtered_df.groupby('Error')['FCOUNT'].agg(
-                    Total_FCOUNT='sum', Occurrences='count'
+                error_sum = filtered_df.groupby('Error').agg(
+                    Total_FCOUNT=('FCOUNT', 'sum'), 
+                    Occurrences=('FCOUNT', 'count')
                 ).sort_values('Total_FCOUNT', ascending=False).reset_index()
                 st.dataframe(error_sum.style.format({"Total_FCOUNT": "{:,}", "Occurrences": "{:,}"})
-                            .background_gradient(subset=['Total_FCOUNT'], cmap='Reds'),
-                            use_container_width=True)
+                            .background_gradient(subset=['Total_FCOUNT'], cmap='Reds'), use_container_width=True)
 
         with col_s2:
             if 'Category' in filtered_df.columns and not filtered_df.empty:
                 st.markdown('<p class="section-header">Category Summary</p>', unsafe_allow_html=True)
-                cat_sum = filtered_df.groupby('Category')['FCOUNT'].agg(
-                    Total_FCOUNT='sum', Occurrences='count'
+                cat_sum = filtered_df.groupby('Category').agg(
+                    Total_FCOUNT=('FCOUNT', 'sum'), 
+                    Occurrences=('FCOUNT', 'count')
                 ).sort_values('Total_FCOUNT', ascending=False).reset_index()
                 st.dataframe(cat_sum.style.format({"Total_FCOUNT": "{:,}", "Occurrences": "{:,}"})
-                            .background_gradient(subset=['Total_FCOUNT'], cmap='Oranges'),
-                            use_container_width=True)
+                            .background_gradient(subset=['Total_FCOUNT'], cmap='Oranges'), use_container_width=True)
 
         st.markdown("---")
         st.markdown('<p class="section-header">Detailed Records</p>', unsafe_allow_html=True)
@@ -263,14 +211,13 @@ else:
                 display_df['Date'] = display_df['Date'].dt.date
             st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}), use_container_width=True, hide_index=True)
 
-            # ====================== DOWNLOAD ======================
+            # Download Button
             st.markdown("---")
             col_btn1, col_btn2, col_btn3 = st.columns([1, 3, 1])
             with col_btn2:
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                     display_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
-                    
                     station_summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
                         Total_FCOUNT='sum', Record_Count='count'
                     ).sort_values('Total_FCOUNT', ascending=False).reset_index()
@@ -289,7 +236,7 @@ else:
                                 'bold': True, 'bg_color': '#003087', 'font_color': 'white',
                                 'border': 1, 'align': 'center', 'valign': 'vcenter'
                             })
-                            for col_num, value in enumerate(df_sheet.columns.values):
+                            for col_num, value in enumerate(df_sheet.columns):
                                 worksheet.write(0, col_num, value, header_format)
                             for idx, col in enumerate(df_sheet.columns):
                                 max_len = max(df_sheet[col].astype(str).map(len).max(), len(str(col))) + 5
@@ -308,46 +255,19 @@ else:
     # ====================== TAB 2: MAP VIEW ======================
     with tab_map:
         st.subheader("🗺️ Interactive Map View")
-        filtered_df = apply_filters(df_original)
+        filtered_df = get_filtered_df()
 
         col_m1, col_m2 = st.columns([3, 2])
         with col_m1:
-            st.subheader("Map")
             if filtered_df.empty or 'STATION' not in filtered_df.columns:
                 st.warning("No data available.")
             else:
+                # Map code (same as before)
                 map_agg = filtered_df.groupby('STATION')['FCOUNT'].sum().reset_index()
-                map_data = []
-                for _, row in map_agg.iterrows():
-                    station_name = str(row['STATION']).strip()
-                    station_upper = station_name.upper()
-                    best_match = next((info for coord_name, info in station_coords.items() 
-                                     if station_upper == coord_name.upper() or 
-                                     coord_name.upper() in station_upper or station_upper in coord_name.upper()), None)
-                    if best_match:
-                        map_data.append({
-                            'STATION': station_name,
-                            'FCOUNT': row['FCOUNT'],
-                            'lat': best_match['lat'],
-                            'lon': best_match['lon']
-                        })
-                map_df = pd.DataFrame(map_data)
-
-                if not map_df.empty:
-                    m = folium.Map(location=[17.85, 75.80], zoom_start=7.2, tiles="CartoDB positron")
-                    max_fcount = map_df['FCOUNT'].max() or 1
-                    for _, row in map_df.iterrows():
-                        intensity = row['FCOUNT'] / max_fcount
-                        color = "darkred" if intensity > 0.7 else "red" if intensity > 0.4 else "orange"
-                        folium.CircleMarker(
-                            location=[row['lat'], row['lon']],
-                            radius=12 + intensity * 18,
-                            popup=folium.Popup(f"<h4>{row['STATION']}</h4><b>FCOUNT:</b> {int(row['FCOUNT']):,}", max_width=300),
-                            tooltip=f"{row['STATION']} ({int(row['FCOUNT']):,})",
-                            color=color, fill=True, fill_color=color, fill_opacity=0.85
-                        ).add_to(m)
-
-                    map_return = st_folium(m, width=900, height=650, key="folium_map_key")
+                # ... (keep your existing map creation logic)
+                m = folium.Map(location=[17.85, 75.80], zoom_start=7.2, tiles="CartoDB positron")
+                # ... add markers
+                st_folium(m, width=900, height=650, key="folium_map_key")
 
         with col_m2:
             st.subheader("Station Summary")
@@ -361,9 +281,7 @@ else:
 
         st.markdown("---")
         st.subheader("Detailed Records")
-        if filtered_df.empty:
-            st.warning("No records found.")
-        else:
+        if not filtered_df.empty:
             display_df = filtered_df.copy()
             if 'Date' in display_df.columns:
                 display_df['Date'] = display_df['Date'].dt.date
