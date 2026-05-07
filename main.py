@@ -95,6 +95,12 @@ def get_road_route(start_coords, end_coords):
             return None, None, None
 
         # Initialize client
+        st.write(st.secrets)
+
+        ORS_API_KEY = st.secrets.get("ORS_API_KEY")
+        
+        st.write("Loaded Key:", ORS_API_KEY)
+        
         client = openrouteservice.Client(
             key=ORS_API_KEY
         )
