@@ -46,7 +46,7 @@ USERS = st.secrets["users"]
 
 # ====================== STATION COORDINATES ======================
 station_coords = {
-    "SOLAPUR": {"lat": 17.66461685325021, "lon": 75.8934378261056, "code": "SUR"},
+    "SUR": {"lat": 17.66461685325021, "lon": 75.8934378261056, "code": "SUR"},
     "KURDUWADI": {"lat": 18.09222393527959, "lon": 75.41722014404814, "code": "KWV"},
     "HOTGI": {"lat": 17.550, "lon": 76.000, "code": "HG"},
     "MOHOL": {"lat": 17.810, "lon": 75.640, "code": "MO"},
