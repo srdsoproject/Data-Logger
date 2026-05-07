@@ -56,7 +56,7 @@ station_coords = {
     "PVR": {"lat": 17.670, "lon": 75.330, "code": "PVR"},
     "BTW": {"lat": 18.230, "lon": 75.410, "code": "BTW"},
     "LUR": {"lat": 18.400, "lon": 76.570, "code": "LUR"},
-    "KLBG": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},,
+    "KLBG": {"lat": 17.330, "lon": 76.830, "code": "KLBG"},
     "WADI": {"lat": 17.05303569516522, "lon": 76.99204755925912, "code": "WADI"},
     "DD": {"lat": 18.460, "lon": 74.580, "code": "DD"},
     "DRSV": {"lat": 18.180, "lon": 76.040, "code": "UMD"},
