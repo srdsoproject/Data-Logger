@@ -150,7 +150,6 @@ else:
     for i, col in enumerate(df_original.columns):
         with filter_cols[i % 4]:
             if col == 'Date':
-                st.write("**Date Range**")
                 col_date1, col_date2 = st.columns(2)
                 with col_date1:
                     from_date = st.date_input(
