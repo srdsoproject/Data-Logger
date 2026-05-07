@@ -188,6 +188,7 @@ else:
             st.metric("Max FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).max():,}")
 
     # ====================== TAB 2: INTERACTIVE MAP ======================
+        # ====================== TAB 2: INTERACTIVE MAP ======================
     with tab_map:
         st.subheader("🗺️ Solapur Division Interactive Map")
         st.caption("Click on any station marker to filter the entire dashboard")
@@ -195,15 +196,40 @@ else:
         if filtered_df.empty or 'STATION' not in filtered_df.columns:
             st.warning("No data available to show on map.")
         else:
-            # Prepare data for map
+            # Prepare map data with flexible name matching
             map_agg = filtered_df.groupby('STATION')['FCOUNT'].sum().reset_index()
-            coords_df = pd.DataFrame.from_dict(station_coords, orient='index').reset_index()
-            coords_df.columns = ['STATION', 'lat', 'lon', 'code']
             
-            map_data = map_agg.merge(coords_df, on='STATION', how='left').dropna(subset=['lat'])
+            # Create coords dataframe
+            coords_list = []
+            for name, info in station_coords.items():
+                coords_list.append({
+                    'STATION_ORIG': name,
+                    'lat': info['lat'],
+                    'lon': info['lon'],
+                    'code': info['code']
+                })
+            coords_df = pd.DataFrame(coords_list)
+
+            # Merge with flexible matching
+            map_data = []
+            for _, row in map_agg.iterrows():
+                station_name = str(row['STATION']).strip().upper()
+                for _, coord in coords_df.iterrows():
+                    coord_name = str(coord['STATION_ORIG']).strip().upper()
+                    if coord_name in station_name or station_name in coord_name:
+                        map_data.append({
+                            'STATION': row['STATION'],
+                            'FCOUNT': row['FCOUNT'],
+                            'lat': coord['lat'],
+                            'lon': coord['lon']
+                        })
+                        break
+
+            map_data = pd.DataFrame(map_data)
 
             if map_data.empty:
-                st.warning("No station coordinates found for the current data.")
+                st.error("No matching stations found. Please check station names in your sheet vs coordinates.")
+                st.info("Current stations in data: " + ", ".join(filtered_df['STATION'].unique()[:10]))
             else:
                 m = folium.Map(location=[17.85, 75.80], zoom_start=7.5, tiles="CartoDB positron")
 
@@ -213,37 +239,34 @@ else:
                     color = "darkred" if intensity > 0.7 else "red" if intensity > 0.4 else "orange"
 
                     popup_html = f"""
-                    <h4 style="margin:0">{row['STATION']}</h4>
-                    <b>Total FCOUNT:</b> {row['FCOUNT']:,}<br>
-                    <b>Records:</b> {len(filtered_df[filtered_df['STATION'].astype(str).str.strip() == str(row['STATION']).strip()])}
+                    <h4>{row['STATION']}</h4>
+                    <b>Total FCOUNT:</b> {int(row['FCOUNT']):,}<br>
+                    <b>Records:</b> {len(filtered_df[filtered_df['STATION'] == row['STATION']])}
                     """
 
                     folium.CircleMarker(
                         location=[row['lat'], row['lon']],
                         radius=10 + intensity * 18,
                         popup=folium.Popup(popup_html, max_width=300),
-                        tooltip=f"{row['STATION']} ({row['FCOUNT']:,})",
+                        tooltip=f"{row['STATION']} ({int(row['FCOUNT']):,})",
                         color=color,
                         fill=True,
                         fill_color=color,
-                        fill_opacity=0.85,
-                        weight=3
+                        fill_opacity=0.85
                     ).add_to(m)
 
-                # Render Map
                 map_return = st_folium(m, width=1350, height=720, returned_objects=["last_object_clicked"])
 
-                # Handle Click
+                # Click handling (same as before)
                 if map_return and map_return.get("last_object_clicked"):
                     lat = map_return["last_object_clicked"]["lat"]
                     lon = map_return["last_object_clicked"]["lng"]
 
                     map_data['dist'] = ((map_data['lat'] - lat)**2 + (map_data['lon'] - lon)**2)**0.5
-                    selected_station = map_data.loc[map_data['dist'].idxmin(), 'STATION']
+                    selected = map_data.loc[map_data['dist'].idxmin(), 'STATION']
 
-                    st.success(f"✅ **Filtered to Station: {selected_station}**")
-                    filtered_df = filtered_df[filtered_df['STATION'].astype(str).str.strip() == str(selected_station).strip()]
-
+                    st.success(f"✅ Filtered to: **{selected}**")
+                    filtered_df = filtered_df[filtered_df['STATION'] == selected]
     # ====================== TAB 3: CHARTS ======================
     with tab_charts:
         col_c1, col_c2 = st.columns([3, 2])
