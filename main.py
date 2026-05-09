@@ -398,7 +398,30 @@ else:
                 map_df = pd.DataFrame(map_data)
 
                 if not map_df.empty:
-                    m = folium.Map(location=[17.85, 75.80], zoom_start=7.2, tiles="CartoDB positron")
+                    # ====================== MAP WITH TILE TOGGLE ======================
+                    m = folium.Map(location=[17.85, 75.80], zoom_start=7.2, tiles=None)
+                    
+                    # Base layers
+                    folium.TileLayer("CartoDB positron", name="Light (Default)", control=True).add_to(m)
+                    folium.TileLayer("OpenStreetMap", name="OpenStreetMap", control=True).add_to(m)
+                    
+                    # Satellite / Hybrid layers
+                    folium.TileLayer(
+                        tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+                        attr="Esri World Imagery",
+                        name="🌐 Satellite",
+                        control=True
+                    ).add_to(m)
+                    
+                    folium.TileLayer(
+                        tiles="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+                        attr="Google Hybrid",
+                        name="🛰️ Google Satellite + Labels",
+                        control=True
+                    ).add_to(m)
+                    
+                    # Add Layer Control
+                    folium.LayerControl(position="topright", collapsed=False).add_to(m)
                     max_f = map_df['FCOUNT'].max() or 1
                     for _, row in map_df.iterrows():
                         intensity = row['FCOUNT'] / max_f
