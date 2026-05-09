@@ -373,7 +373,8 @@ else:
                     file_name=f"Datalogger_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
-                    use_container_width=True
+                    use_container_width=True,
+                    key="download_overview"   # ← Added unique key
                 )
     #Ref
     # ====================== MAP TAB ======================
@@ -541,7 +542,8 @@ else:
                     file_name=f"Map_Filtered_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
-                    use_container_width=True
+                    use_container_width=True,
+                    key="download_map"        # ← Added unique key
                 )
         with col_m2:
             st.subheader("Station Summary")
