@@ -270,10 +270,12 @@ else:
     if selected_time and 'TIMEDETAILS' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['TIMEDETAILS'].isin(selected_time)]
         # ====================== APPLY MAP FILTER ======================
+    # ====================== MAP SELECTION FILTER ======================
     if "map_selected_station" in st.session_state:
         selected_stn = st.session_state.map_selected_station
-        filtered_df = filtered_df[filtered_df['STATION'] == selected_stn]
-        st.info(f"📍 Filtered by Map Selection: **{selected_stn}**")
+        if selected_stn in filtered_df['STATION'].values:
+            filtered_df = filtered_df[filtered_df['STATION'] == selected_stn]
+            st.info(f"📍 Currently viewing data for station: **{selected_stn}**", icon="🔍")
     st.divider()
 
     # ====================== TABS ======================
@@ -469,7 +471,6 @@ else:
                         
                         st.session_state.map_selected_station = selected_station
                         st.success(f"✅ Station Selected: **{selected_station}**")
-                        st.rerun()
 
         with col_m2:
             st.subheader("Station Summary")
