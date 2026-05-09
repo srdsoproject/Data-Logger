@@ -374,16 +374,18 @@ else:
                     type="primary",
                     use_container_width=True
                 )
-
+    #Ref
     with tab_map:
         st.subheader("🗺️ Interactive Map View - Click on Station to Filter")
         col_m1, col_m2 = st.columns([3, 2])
+        
         with col_m1:
             if filtered_df.empty or 'STATION' not in filtered_df.columns:
                 st.warning("No data available.")
             else:
                 map_agg = filtered_df.groupby('STATION')['FCOUNT'].sum().reset_index()
                 map_data = []
+                
                 for _, row in map_agg.iterrows():
                     station_name = str(row['STATION']).strip().upper()
                     best_match = next((info for name, info in station_coords.items()
@@ -395,21 +397,22 @@ else:
                             'lat': best_match['lat'],
                             'lon': best_match['lon']
                         })
+                
                 map_df = pd.DataFrame(map_data)
-
+                
                 if not map_df.empty:
-                    # ====================== MAP WITH TILE TOGGLE ======================
+                    # ====================== IMPROVED MAP WITH MULTIPLE LAYERS ======================
                     m = folium.Map(location=[17.85, 75.80], zoom_start=7.2, tiles=None)
                     
-                    # Base layers
+                    # Base Layers
                     folium.TileLayer("CartoDB positron", name="Light (Default)", control=True).add_to(m)
                     folium.TileLayer("OpenStreetMap", name="OpenStreetMap", control=True).add_to(m)
                     
-                    # Satellite / Hybrid layers
+                    # Satellite & Hybrid Layers
                     folium.TileLayer(
                         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
                         attr="Esri World Imagery",
-                        name="🌐 Satellite",
+                        name="🌐 Satellite (Esri)",
                         control=True
                     ).add_to(m)
                     
@@ -420,30 +423,50 @@ else:
                         control=True
                     ).add_to(m)
                     
-                    # Add Layer Control
+                    folium.TileLayer(
+                        tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+                        attr="Google Satellite",
+                        name="🛰️ Google Satellite (No Labels)",
+                        control=True
+                    ).add_to(m)
+                    
+                    # Add Controls
                     folium.LayerControl(position="topright", collapsed=False).add_to(m)
+                    
+                    # Fullscreen Plugin
+                    folium.plugins.Fullscreen(
+                        position="topleft", 
+                        title="Expand Map",
+                        title_cancel="Exit Fullscreen"
+                    ).add_to(m)
+                    
+                    # Add Markers
                     max_f = map_df['FCOUNT'].max() or 1
                     for _, row in map_df.iterrows():
                         intensity = row['FCOUNT'] / max_f
                         color = "darkred" if intensity > 0.7 else "red" if intensity > 0.4 else "orange"
+                        
                         folium.CircleMarker(
                             location=[row['lat'], row['lon']],
                             radius=12 + intensity * 18,
                             popup=f"<h4>{row['STATION']}</h4><b>FCOUNT:</b> {int(row['FCOUNT']):,}",
                             tooltip=f"{row['STATION']} ({int(row['FCOUNT']):,})",
-                            color=color, fill=True, fill_color=color, fill_opacity=0.85
+                            color=color, 
+                            fill=True, 
+                            fill_color=color, 
+                            fill_opacity=0.85
                         ).add_to(m)
-
+                    
                     map_return = st_folium(m, width=900, height=650, key="folium_key")
-
+                    
                     if map_return and map_return.get("last_object_clicked"):
                         lat = map_return["last_object_clicked"]["lat"]
                         lon = map_return["last_object_clicked"]["lng"]
                         map_df['dist'] = ((map_df['lat'] - lat)**2 + (map_df['lon'] - lon)**2)**0.5
                         selected_station = map_df.loc[map_df['dist'].idxmin(), 'STATION']
+                        
                         st.success(f"✅ Station Selected: **{selected_station}**")
                         filtered_df = filtered_df[filtered_df['STATION'] == selected_station]
-
         with col_m2:
             st.subheader("Station Summary")
             if not filtered_df.empty:
