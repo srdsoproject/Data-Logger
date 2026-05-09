@@ -7,7 +7,6 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import folium
 from streamlit_folium import st_folium
-import folium.plugins as plugins
 
 # ====================== PAGE CONFIG ======================
 st.set_page_config(
@@ -269,13 +268,7 @@ else:
         filtered_df = filtered_df[filtered_df['REMARK'].isin(selected_remark)]
     if selected_time and 'TIMEDETAILS' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['TIMEDETAILS'].isin(selected_time)]
-        # ====================== APPLY MAP FILTER ======================
-    # ====================== MAP SELECTION FILTER ======================
-    if "map_selected_station" in st.session_state:
-        selected_stn = st.session_state.map_selected_station
-        if selected_stn in filtered_df['STATION'].values:
-            filtered_df = filtered_df[filtered_df['STATION'] == selected_stn]
-            st.info(f"📍 Currently viewing data for station: **{selected_stn}**", icon="🔍")
+
     st.divider()
 
     # ====================== TABS ======================
@@ -379,23 +372,11 @@ else:
                     file_name=f"Datalogger_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
-                    use_container_width=True,
-                    key="download_overview"   # ← Added unique key
+                    use_container_width=True
                 )
     #Ref
-    # ====================== MAP TAB ======================
-        # ====================== MAP TAB ======================
-    # ====================== MAP TAB ======================
     with tab_map:
         st.subheader("🗺️ Interactive Map View - Click on Station to Filter")
-        
-        # Clear Map Filter Button
-        if st.button("🔄 Clear Map Filter", type="secondary", use_container_width=True, key="clear_map_filter"):
-            if "map_selected_station" in st.session_state:
-                del st.session_state.map_selected_station
-            st.success("✅ Map filter cleared!")
-            st.rerun()
-
         col_m1, col_m2 = st.columns([3, 2])
         
         with col_m1:
@@ -420,31 +401,44 @@ else:
                 map_df = pd.DataFrame(map_data)
                 
                 if not map_df.empty:
-                    # ====================== MAP WITH LAYERS ======================
+                    # ====================== IMPROVED MAP WITH MULTIPLE LAYERS ======================
                     m = folium.Map(location=[17.85, 75.80], zoom_start=7.2, tiles=None)
                     
                     # Base Layers
                     folium.TileLayer("CartoDB positron", name="Light (Default)", control=True).add_to(m)
                     folium.TileLayer("OpenStreetMap", name="OpenStreetMap", control=True).add_to(m)
                     
-                    # Satellite Layers
+                    # Satellite & Hybrid Layers
                     folium.TileLayer(
                         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-                        attr="Esri World Imagery", name="🌐 Satellite (Esri)", control=True
+                        attr="Esri World Imagery",
+                        name="🌐 Satellite (Esri)",
+                        control=True
                     ).add_to(m)
                     
                     folium.TileLayer(
                         tiles="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
-                        attr="Google Hybrid", name="🛰️ Google Satellite + Labels", control=True
+                        attr="Google Hybrid",
+                        name="🛰️ Google Satellite + Labels",
+                        control=True
                     ).add_to(m)
                     
                     folium.TileLayer(
                         tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-                        attr="Google Satellite", name="🛰️ Google Satellite (No Labels)", control=True
+                        attr="Google Satellite",
+                        name="🛰️ Google Satellite (No Labels)",
+                        control=True
                     ).add_to(m)
                     
+                    # Add Controls
                     folium.LayerControl(position="topright", collapsed=False).add_to(m)
-                    folium.plugins.Fullscreen(position="topleft", title="Expand Map", title_cancel="Exit Fullscreen").add_to(m)
+                    
+                    # Fullscreen Plugin
+                    folium.plugins.Fullscreen(
+                        position="topleft", 
+                        title="Expand Map",
+                        title_cancel="Exit Fullscreen"
+                    ).add_to(m)
                     
                     # Add Markers
                     max_f = map_df['FCOUNT'].max() or 1
@@ -457,21 +451,22 @@ else:
                             radius=12 + intensity * 18,
                             popup=f"<h4>{row['STATION']}</h4><b>FCOUNT:</b> {int(row['FCOUNT']):,}",
                             tooltip=f"{row['STATION']} ({int(row['FCOUNT']):,})",
-                            color=color, fill=True, fill_color=color, fill_opacity=0.85
+                            color=color, 
+                            fill=True, 
+                            fill_color=color, 
+                            fill_opacity=0.85
                         ).add_to(m)
                     
                     map_return = st_folium(m, width=900, height=650, key="folium_key")
                     
-                    # === FIXED: Handle Station Click ===
                     if map_return and map_return.get("last_object_clicked"):
                         lat = map_return["last_object_clicked"]["lat"]
                         lon = map_return["last_object_clicked"]["lng"]
                         map_df['dist'] = ((map_df['lat'] - lat)**2 + (map_df['lon'] - lon)**2)**0.5
                         selected_station = map_df.loc[map_df['dist'].idxmin(), 'STATION']
                         
-                        st.session_state.map_selected_station = selected_station
                         st.success(f"✅ Station Selected: **{selected_station}**")
-
+                        filtered_df = filtered_df[filtered_df['STATION'] == selected_station]
         with col_m2:
             st.subheader("Station Summary")
             if not filtered_df.empty:
@@ -482,7 +477,7 @@ else:
                             .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
                             use_container_width=True)
 
-        # ====================== DETAILED RECORDS ======================
+        #ref
         st.markdown("---")
         st.subheader("Detailed Records")
         
@@ -490,57 +485,123 @@ else:
             st.warning("No records found.")
         else:
             display_df = filtered_df.copy()
+        
             if 'Date' in display_df.columns:
                 display_df['Date'] = display_df['Date'].dt.date
-            
-            st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}), 
-                        use_container_width=True, hide_index=True)
-            
+        
+            st.dataframe(
+                display_df.style.format({"FCOUNT": "{:,}"}),
+                use_container_width=True,
+                hide_index=True
+            )
+        
             # ====================== DOWNLOAD ======================
             st.markdown("---")
+        
             col_btn1, col_btn2, col_btn3 = st.columns([1, 3, 1])
+        
             with col_btn2:
+        
                 output = BytesIO()
+        
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    display_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
+        
+                    # Main Records
+                    display_df.to_excel(
+                        writer,
+                        index=False,
+                        sheet_name='Filtered_Records'
+                    )
+        
+                    # Station Summary
                     station_summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
-                        Total_FCOUNT='sum', Record_Count='count'
-                    ).sort_values('Total_FCOUNT', ascending=False).reset_index()
-                    station_summary.to_excel(writer, index=False, sheet_name='Station_Summary')
-                    
+                        Total_FCOUNT='sum',
+                        Record_Count='count'
+                    ).sort_values(
+                        'Total_FCOUNT',
+                        ascending=False
+                    ).reset_index()
+        
+                    station_summary.to_excel(
+                        writer,
+                        index=False,
+                        sheet_name='Station_Summary'
+                    )
+        
+                    # Error Summary
                     if 'Error' in filtered_df.columns:
                         error_sum = filtered_df.groupby('Error').agg(
-                            Total_FCOUNT=('FCOUNT', 'sum'), Occurrences=('FCOUNT', 'count')
-                        ).sort_values('Total_FCOUNT', ascending=False).reset_index()
-                        error_sum.to_excel(writer, index=False, sheet_name='Error_Summary')
-                    
+                            Total_FCOUNT=('FCOUNT', 'sum'),
+                            Occurrences=('FCOUNT', 'count')
+                        ).sort_values(
+                            'Total_FCOUNT',
+                            ascending=False
+                        ).reset_index()
+        
+                        error_sum.to_excel(
+                            writer,
+                            index=False,
+                            sheet_name='Error_Summary'
+                        )
+        
+                    # Category Summary
                     if 'Category' in filtered_df.columns:
                         cat_sum = filtered_df.groupby('Category').agg(
-                            Total_FCOUNT=('FCOUNT', 'sum'), Occurrences=('FCOUNT', 'count')
-                        ).sort_values('Total_FCOUNT', ascending=False).reset_index()
-                        cat_sum.to_excel(writer, index=False, sheet_name='Category_Summary')
-                    
-                    for sheet_name, df_sheet in [('Filtered_Records', display_df), ('Station_Summary', station_summary)]:
+                            Total_FCOUNT=('FCOUNT', 'sum'),
+                            Occurrences=('FCOUNT', 'count')
+                        ).sort_values(
+                            'Total_FCOUNT',
+                            ascending=False
+                        ).reset_index()
+        
+                        cat_sum.to_excel(
+                            writer,
+                            index=False,
+                            sheet_name='Category_Summary'
+                        )
+        
+                    # Professional Formatting
+                    for sheet_name, df_sheet in [
+                        ('Filtered_Records', display_df),
+                        ('Station_Summary', station_summary)
+                    ]:
+        
                         if sheet_name in writer.sheets:
+        
                             worksheet = writer.sheets[sheet_name]
+        
                             header_format = writer.book.add_format({
-                                'bold': True, 'bg_color': '#003087', 'font_color': 'white',
-                                'border': 1, 'align': 'center', 'valign': 'vcenter'
+                                'bold': True,
+                                'bg_color': '#003087',
+                                'font_color': 'white',
+                                'border': 1,
+                                'align': 'center',
+                                'valign': 'vcenter'
                             })
+        
+                            # Header Formatting
                             for col_num, value in enumerate(df_sheet.columns.values):
                                 worksheet.write(0, col_num, value, header_format)
+        
+                            # Auto Column Width
                             for idx, col in enumerate(df_sheet.columns):
-                                max_len = max(df_sheet[col].astype(str).map(len).max(), len(str(col))) + 5
+        
+                                max_len = max(
+                                    df_sheet[col].astype(str).map(len).max(),
+                                    len(str(col))
+                                ) + 5
+        
                                 worksheet.set_column(idx, idx, min(max_len, 60))
-                
+        
                 output.seek(0)
+        
                 st.download_button(
                     label="⬇️ Download Professional Excel Report",
                     data=output.getvalue(),
                     file_name=f"Map_Filtered_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
-                    use_container_width=True,
-                    key="download_map"
+                    use_container_width=True
                 )
+
     st.caption("🚄 Safety Branch | Central Railway, Solapur Division")
