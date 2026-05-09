@@ -269,7 +269,11 @@ else:
         filtered_df = filtered_df[filtered_df['REMARK'].isin(selected_remark)]
     if selected_time and 'TIMEDETAILS' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['TIMEDETAILS'].isin(selected_time)]
-
+        # ====================== APPLY MAP FILTER ======================
+    if "map_selected_station" in st.session_state:
+        selected_stn = st.session_state.map_selected_station
+        filtered_df = filtered_df[filtered_df['STATION'] == selected_stn]
+        st.info(f"📍 Filtered by Map Selection: **{selected_stn}**")
     st.divider()
 
     # ====================== TABS ======================
