@@ -41,26 +41,25 @@ USERS = st.secrets["users"]
 
 # ====================== STATION COORDINATES ======================
 station_coords = {
-    "WADI": {"lat": 17.05303569516522, "lon": 76.99204755925912},  
+    "WADI": {"lat": 17.05303569516522, "lon": 76.99204755925912},
     "SDB": {"lat": 17.12207211329687, "lon": 76.94370232393466},
-    "MR": {"lat": 17.199884316888113, "lon": 76.90242140933267}, 
-    "HQR": {"lat": 17.258329320477387, "lon": 76.87213360102963},   
-    "KLBG": {"lat": 17.31464128074813, "lon": 76.82539943154254},    
+    "MR": {"lat": 17.199884316888113, "lon": 76.90242140933267},
+    "HQR": {"lat": 17.258329320477387, "lon": 76.87213360102963},
+    "KLBG": {"lat": 17.31464128074813, "lon": 76.82539943154254},
     "TJSP": {"lat": 17.38155787142842, "lon": 76.83078651026582},
-    "BBD": {"lat": 17.336940866375414, "lon":76.7792743961494},   
-    "SVG": {"lat": 17.33968072788599, "lon":76.71139619013732}, 
-    "HHD": {"lat": 17.352700945672176, "lon":76.64674999614954},  
-    "GUR": {"lat": 17.340847607132325, "lon":76.5895995384797},   
-    "GUR": {"lat": 17.336210818579424, "lon":76.53065328893963},  
-    "KUI": {"lat": 17.357481126320312, "lon":76.47050033971526},  
-    "DUD": {"lat": 17.36262542350625, "lon":76.38023255381961},   
-    "NGS": {"lat": 17.429201164736277, "lon":76.18296853848099},   
-    "BOT": {"lat": 17.395116057678774, "lon":76.25531964887394},      
-    "AKOR": {"lat": 17.450540923674154, "lon": 76.13878780964653},  
-    "TLT": {"lat": 17.529150347297044, "lon": 76.03601785680922},      
-    "HG STN": {"lat": 17.565461287426693, "lon": 75.9894306025621},    
-    "HG-A": {"lat": 17.555916499098096, "lon": 76.00138432588585},       
-    "TKWD": {"lat": 17.615367249178764, "lon": 75.93344533709772},  
+    "BBD": {"lat": 17.336940866375414, "lon":76.7792743961494},
+    "SVG": {"lat": 17.33968072788599, "lon":76.71139619013732},
+    "HHD": {"lat": 17.352700945672176, "lon":76.64674999614954},
+    "GUR": {"lat": 17.340847607132325, "lon":76.5895995384797},
+    "KUI": {"lat": 17.357481126320312, "lon":76.47050033971526},
+    "DUD": {"lat": 17.36262542350625, "lon":76.38023255381961},
+    "NGS": {"lat": 17.429201164736277, "lon":76.18296853848099},
+    "BOT": {"lat": 17.395116057678774, "lon":76.25531964887394},
+    "AKOR": {"lat": 17.450540923674154, "lon": 76.13878780964653},
+    "TLT": {"lat": 17.529150347297044, "lon": 76.03601785680922},
+    "HG STN": {"lat": 17.565461287426693, "lon": 75.9894306025621},
+    "HG-A": {"lat": 17.555916499098096, "lon": 76.00138432588585},
+    "TKWD": {"lat": 17.615367249178764, "lon": 75.93344533709772},
     "SUR": {"lat": 17.66461685325021, "lon": 75.8934378261056},
     "BALE": {"lat": 17.67603540641838, "lon": 75.84576721149409},
     "PK": {"lat": 17.725604941699864, "lon": 75.77920258081592},
@@ -84,52 +83,58 @@ station_coords = {
     "MLM": {"lat": 18.368948833491366, "lon":74.72444118537874},
     "BRB": {"lat": 18.407915112523582, "lon":74.6490078310967},
     "MRJ": {"lat": 16.81963598398112, "lon": 74.63884656730691},
-    "BLWD": {"lat": 16.816450353858315, "lon": 74.6848784309091},  
-    "BDK": {"lat": 16.82260514883158, "lon": 74.73242941035451}, 
-    "ARAG": {"lat": 16.822915416337786, "lon": 74.78885649248846},   
+    "BLWD": {"lat": 16.816450353858315, "lon": 74.6848784309091},
+    "BDK": {"lat": 16.82260514883158, "lon": 74.73242941035451},
+    "ARAG": {"lat": 16.822915416337786, "lon": 74.78885649248846},
     "BLNK": {"lat": 16.851881572150898, "lon": 74.87035305369132},
-    "SGRE": {"lat": 16.89299615360604, "lon": 74.90379065076426},   
-    "AGDl": {"lat": 16.95511622318343, "lon": 74.9217523566787},   
-    "KVK": {"lat": 16.993451321113707, "lon": 74.93640413701563},   
-    "LNP": {"lat": 17.08409186087585, "lon": 74.96648999614565},   
-    "DLGN": {"lat": 17.12248941189781, "lon": 74.99090321680957},   
-    "GLV": {"lat": 17.172780301899458, "lon": 75.05616359877327},   
-    "JTRD": {"lat": 17.218097953252496, "lon": 75.11167313571244},  
-    "MSDG": {"lat": 17.269767344711966, "lon": 75.13869487464056},   
-    "JVA": {"lat": 17.29927168818127, "lon": 75.15831072498368},   
-    "WSD": {"lat": 17.37772780658702, "lon": 75.14796632741995},   
-    "SGLA": {"lat": 17.436927805442046, "lon": 75.18841716855994},   
-    "BMNI": {"lat": 17.510679238270942, "lon": 75.23653144358765},   
-    "BHLI": {"lat": 17.588890463817744, "lon": 75.27444374355429}, 
-    "PVR": {"lat": 17.66895109379127, "lon": 75.31975306090992},  
-    "BBV": {"lat": 17.76904752111648, "lon": 75.39791698431098},   
-    "AHI": {"lat": 17.845027674667048, "lon": 75.40338896837972},  
-    "MLB": {"lat": 17.91701602096594, "lon": 75.40538340426733},   
-    "PSS": {"lat": 18.000856885777456, "lon": 75.38989817631149},   
-    "LAUL": {"lat": 18.03355629204764, "lon": 75.39532863007801},   
-    "CNHL": {"lat": 18.099881017907574, "lon": 75.45785352269934},   
-    "MGO": {"lat": 18.1096021568062, "lon": 75.49542122315127}, 
-    "SEI": {"lat": 18.149389148247096, "lon": 75.59026142499687},   
-    "UPI": {"lat": 18.179945557118465, "lon": 75.6356972899416},   
+    "SGRE": {"lat": 16.89299615360604, "lon": 74.90379065076426},
+    "AGDl": {"lat": 16.95511622318343, "lon": 74.9217523566787},
+    "KVK": {"lat": 16.993451321113707, "lon": 74.93640413701563},
+    "LNP": {"lat": 17.08409186087585, "lon": 74.96648999614565},
+    "DLGN": {"lat": 17.12248941189781, "lon": 74.99090321680957},
+    "GLV": {"lat": 17.172780301899458, "lon": 75.05616359877327},
+    "JTRD": {"lat": 17.218097953252496, "lon": 75.11167313571244},
+    "MSDG": {"lat": 17.269767344711966, "lon": 75.13869487464056},
+    "JVA": {"lat": 17.29927168818127, "lon": 75.15831072498368},
+    "WSD": {"lat": 17.37772780658702, "lon": 75.14796632741995},
+    "SGLA": {"lat": 17.436927805442046, "lon": 75.18841716855994},
+    "BMNI": {"lat": 17.510679238270942, "lon": 75.23653144358765},
+    "BHLI": {"lat": 17.588890463817744, "lon": 75.27444374355429},
+    "PVR": {"lat": 17.66895109379127, "lon": 75.31975306090992},
+    "BBV": {"lat": 17.76904752111648, "lon": 75.39791698431098},
+    "AHI": {"lat": 17.845027674667048, "lon": 75.40338896837972},
+    "MLB": {"lat": 17.91701602096594, "lon": 75.40538340426733},
+    "PSS": {"lat": 18.000856885777456, "lon": 75.38989817631149},
+    "LAUL": {"lat": 18.03355629204764, "lon": 75.39532863007801},
+    "CNHL": {"lat": 18.099881017907574, "lon": 75.45785352269934},
+    "MGO": {"lat": 18.1096021568062, "lon": 75.49542122315127},
+    "SEI": {"lat": 18.149389148247096, "lon": 75.59026142499687},
+    "UPI": {"lat": 18.179945557118465, "lon": 75.6356972899416},
     "BTW": {"lat": 18.240970610084844, "lon": 75.71804892625418},
-    "KCB": {"lat": 18.279056755382747, "lon": 75.78166860372836},   
-    "PJR": {"lat": 18.283948752266966, "lon": 75.86723131577448},   
-    "DRSV": {"lat": 18.247878328931048, "lon": 76.02287892615388},  
-    "YSI": {"lat": 18.317606171075578, "lon": 75.97700896898456},  
-    "KRMD": {"lat": 18.371892606761342, "lon": 76.04928088248217},   
-    "DKY": {"lat": 18.353691655460597, "lon": 76.10311836170408},   
-    "TER": {"lat": 18.35266581335599, "lon": 76.15005236994277},    
-    "PCP": {"lat": 18.3584179274254, "lon": 76.19327000536276},   
-    "MRX": {"lat": 18.380274853550898, "lon": 76.25111538019095},  
-    "NEI": {"lat": 18.3873686007519, "lon": 76.31091170451272},   
-    "OSA": {"lat": 18.378479646870694, "lon": 76.40761212644625},   
-    "HGL": {"lat": 18.390199985034297, "lon": 76.49591856320265},      
+    "KCB": {"lat": 18.279056755382747, "lon": 75.78166860372836},
+    "PJR": {"lat": 18.283948752266966, "lon": 75.86723131577448},
+    "DRSV": {"lat": 18.247878328931048, "lon": 76.02287892615388},
+    "YSI": {"lat": 18.317606171075578, "lon": 75.97700896898456},
+    "KRMD": {"lat": 18.371892606761342, "lon": 76.04928088248217},
+    "DKY": {"lat": 18.353691655460597, "lon": 76.10311836170408},
+    "TER": {"lat": 18.35266581335599, "lon": 76.15005236994277},
+    "PCP": {"lat": 18.3584179274254, "lon": 76.19327000536276},
+    "MRX": {"lat": 18.380274853550898, "lon": 76.25111538019095},
+    "NEI": {"lat": 18.3873686007519, "lon": 76.31091170451272},
+    "OSA": {"lat": 18.378479646870694, "lon": 76.40761212644625},
+    "HGL": {"lat": 18.390199985034297, "lon": 76.49591856320265},
     "LUR": {"lat": 18.429426709423403, "lon": 76.5560806337212},
-    "BANL": {"lat": 18.44605226022196, "lon": 76.67840203837198},    
-    "GANI": {"lat": 18.479267109518492, "lon": 76.76394964918596},  
-    "DD": {"lat": 18.46377428753149, "lon": 74.57928783698621},  
-
+    "BANL": {"lat": 18.44605226022196, "lon": 76.67840203837198},
+    "GANI": {"lat": 18.479267109518492, "lon": 76.76394964918596},
+    "DD": {"lat": 18.46377428753149, "lon": 74.57928783698621},
 }
+
+# ====================== SESSION STATE ======================
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+if "map_selected_station" not in st.session_state:
+    st.session_state.map_selected_station = None
 
 # ====================== LOGIN & LOAD DATA ======================
 def login_page():
@@ -148,7 +153,7 @@ def login_page():
                 else:
                     st.error("Invalid credentials!")
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=600, show_spinner="Loading latest data from Google Sheets...")
 def load_data_from_gsheet():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -158,19 +163,21 @@ def load_data_from_gsheet():
         client = gspread.authorize(credentials)
         sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
         df = pd.DataFrame(sheet.get_all_records())
+        
         if df.empty:
             st.error("Google Sheet is empty!")
             st.stop()
+            
         df.columns = df.columns.str.strip()
         df = df.loc[:, ~df.columns.str.lower().str.replace('.', '', regex=False)
                     .str.contains(r'^(?:sl|sr)\s*no', regex=True)]
-        
+       
         if 'FCOUNT' in df.columns:
             df['FCOUNT'] = pd.to_numeric(df['FCOUNT'], errors='coerce').fillna(0).astype(int)
         if 'Date' in df.columns:
             df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-            df['Month'] = df['Date'].dt.strftime('%B')   # January, February, etc.
-        
+            df['Month'] = df['Date'].dt.strftime('%B')
+       
         return df
     except Exception as e:
         st.error(f"Failed to load data: {e}")
@@ -178,13 +185,11 @@ def load_data_from_gsheet():
 
 def refresh_data():
     st.cache_data.clear()
+    st.session_state.map_selected_station = None
     st.success("✅ Data refreshed successfully!")
     st.rerun()
 
 # ====================== MAIN APP ======================
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-
 if not st.session_state.logged_in:
     login_page()
 else:
@@ -203,9 +208,8 @@ else:
 
     df_original = load_data_from_gsheet()
 
-    # ====================== LIVE FILTERS (All Dropdowns) ======================
+    # ====================== LIVE FILTERS ======================
     st.markdown("### 🔍 Live Filters")
-
     col_f1 = st.columns([2, 2, 2, 2])
     with col_f1[0]:
         stations = sorted(df_original['STATION'].dropna().unique().tolist()) if 'STATION' in df_original.columns else []
@@ -234,18 +238,21 @@ else:
         time_list = sorted(df_original['TIMEDETAILS'].dropna().unique().tolist()) if 'TIMEDETAILS' in df_original.columns else []
         selected_time = st.multiselect("TIMEDETAILS", options=time_list, default=[], key="time_key")
 
-    # Date Range
     col_date = st.columns([2, 2, 1])
     with col_date[0]:
-        from_date = st.date_input("From Date", value=df_original['Date'].min().date() if not df_original.empty else pd.Timestamp.now().date(), key="from_date_key")
+        from_date = st.date_input("From Date", 
+                                  value=df_original['Date'].min().date() if not df_original.empty else pd.Timestamp.now().date(), 
+                                  key="from_date_key")
     with col_date[1]:
-        to_date = st.date_input("To Date", value=df_original['Date'].max().date() if not df_original.empty else pd.Timestamp.now().date(), key="to_date_key")
+        to_date = st.date_input("To Date", 
+                                value=df_original['Date'].max().date() if not df_original.empty else pd.Timestamp.now().date(), 
+                                key="to_date_key")
+
     st.divider()
 
     # ====================== APPLY FILTERS ======================
     filtered_df = df_original.copy()
 
-    # Date Filter
     if 'Date' in filtered_df.columns:
         filtered_df = filtered_df[
             (filtered_df['Date'].dt.date >= from_date) &
@@ -269,6 +276,10 @@ else:
     if selected_time and 'TIMEDETAILS' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['TIMEDETAILS'].isin(selected_time)]
 
+    # Map Selection Override
+    if st.session_state.map_selected_station:
+        filtered_df = filtered_df[filtered_df['STATION'] == st.session_state.map_selected_station]
+
     st.divider()
 
     # ====================== TABS ======================
@@ -280,7 +291,7 @@ else:
         with c1: st.metric("Total Records", f"{len(filtered_df):,}")
         with c2: st.metric("Total FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).sum():,}")
         with c3:
-            if not filtered_df.empty and 'STATION' in filtered_df.columns:
+            if not filtered_df.empty and 'STATION' in filtered_df.columns and not filtered_df['FCOUNT'].empty:
                 top_row = filtered_df.loc[filtered_df['FCOUNT'].idxmax()]
                 st.metric("Top Station", top_row['STATION'], f"{top_row['FCOUNT']:,}")
         with c4: st.metric("Max FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).max():,}")
@@ -316,7 +327,6 @@ else:
                 ).sort_values('Total_FCOUNT', ascending=False).reset_index()
                 st.dataframe(error_sum.style.format({"Total_FCOUNT": "{:,}", "Occurrences": "{:,}"})
                             .background_gradient(subset=['Total_FCOUNT'], cmap='Reds'), use_container_width=True)
-
         with col_s2:
             if 'Category' in filtered_df.columns and not filtered_df.empty:
                 st.markdown('<p class="section-header">Category Summary</p>', unsafe_allow_html=True)
@@ -336,7 +346,7 @@ else:
                 display_df['Date'] = display_df['Date'].dt.date
             st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}), use_container_width=True, hide_index=True)
 
-            # ====================== DOWNLOAD ======================
+            # Download Section
             st.markdown("---")
             col_btn1, col_btn2, col_btn3 = st.columns([1, 3, 1])
             with col_btn2:
@@ -364,7 +374,6 @@ else:
                             for idx, col in enumerate(df_sheet.columns):
                                 max_len = max(df_sheet[col].astype(str).map(len).max(), len(str(col))) + 5
                                 worksheet.set_column(idx, idx, min(max_len, 60))
-
                 output.seek(0)
                 st.download_button(
                     label="⬇️ Download Professional Excel Report",
@@ -374,18 +383,28 @@ else:
                     type="primary",
                     use_container_width=True
                 )
-    #Ref
+
     with tab_map:
         st.subheader("🗺️ Interactive Map View - Click on Station to Filter")
+
+        # Clear Selection Button
+        if st.session_state.map_selected_station:
+            col_clear1, col_clear2 = st.columns([1, 5])
+            with col_clear1:
+                if st.button("🔄 Clear Station Selection", type="secondary", use_container_width=True):
+                    st.session_state.map_selected_station = None
+                    st.rerun()
+            st.success(f"📍 Currently viewing: **{st.session_state.map_selected_station}**")
+
         col_m1, col_m2 = st.columns([3, 2])
-        
+       
         with col_m1:
             if filtered_df.empty or 'STATION' not in filtered_df.columns:
                 st.warning("No data available.")
             else:
                 map_agg = filtered_df.groupby('STATION')['FCOUNT'].sum().reset_index()
                 map_data = []
-                
+               
                 for _, row in map_agg.iterrows():
                     station_name = str(row['STATION']).strip().upper()
                     best_match = next((info for name, info in station_coords.items()
@@ -397,76 +416,55 @@ else:
                             'lat': best_match['lat'],
                             'lon': best_match['lon']
                         })
-                
+               
                 map_df = pd.DataFrame(map_data)
-                
+               
                 if not map_df.empty:
-                    # ====================== IMPROVED MAP WITH MULTIPLE LAYERS ======================
                     m = folium.Map(location=[17.85, 75.80], zoom_start=7.2, tiles=None)
-                    
-                    # Base Layers
+                   
                     folium.TileLayer("CartoDB positron", name="Light (Default)", control=True).add_to(m)
                     folium.TileLayer("OpenStreetMap", name="OpenStreetMap", control=True).add_to(m)
-                    
-                    # Satellite & Hybrid Layers
                     folium.TileLayer(
                         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-                        attr="Esri World Imagery",
-                        name="🌐 Satellite (Esri)",
-                        control=True
+                        attr="Esri World Imagery", name="🌐 Satellite (Esri)", control=True
                     ).add_to(m)
-                    
                     folium.TileLayer(
                         tiles="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
-                        attr="Google Hybrid",
-                        name="🛰️ Google Satellite + Labels",
-                        control=True
+                        attr="Google Hybrid", name="🛰️ Google Satellite + Labels", control=True
                     ).add_to(m)
-                    
                     folium.TileLayer(
                         tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-                        attr="Google Satellite",
-                        name="🛰️ Google Satellite (No Labels)",
-                        control=True
+                        attr="Google Satellite", name="🛰️ Google Satellite (No Labels)", control=True
                     ).add_to(m)
-                    
-                    # Add Controls
+                   
                     folium.LayerControl(position="topright", collapsed=False).add_to(m)
-                    
-                    # Fullscreen Plugin
-                    folium.plugins.Fullscreen(
-                        position="topleft", 
-                        title="Expand Map",
-                        title_cancel="Exit Fullscreen"
-                    ).add_to(m)
-                    
-                    # Add Markers
+                    folium.plugins.Fullscreen(position="topleft", title="Expand Map", title_cancel="Exit Fullscreen").add_to(m)
+                   
                     max_f = map_df['FCOUNT'].max() or 1
                     for _, row in map_df.iterrows():
                         intensity = row['FCOUNT'] / max_f
                         color = "darkred" if intensity > 0.7 else "red" if intensity > 0.4 else "orange"
-                        
+                       
                         folium.CircleMarker(
                             location=[row['lat'], row['lon']],
                             radius=12 + intensity * 18,
                             popup=f"<h4>{row['STATION']}</h4><b>FCOUNT:</b> {int(row['FCOUNT']):,}",
                             tooltip=f"{row['STATION']} ({int(row['FCOUNT']):,})",
-                            color=color, 
-                            fill=True, 
-                            fill_color=color, 
-                            fill_opacity=0.85
+                            color=color, fill=True, fill_color=color, fill_opacity=0.85
                         ).add_to(m)
-                    
+                   
                     map_return = st_folium(m, width=900, height=650, key="folium_key")
-                    
+                   
                     if map_return and map_return.get("last_object_clicked"):
                         lat = map_return["last_object_clicked"]["lat"]
                         lon = map_return["last_object_clicked"]["lng"]
                         map_df['dist'] = ((map_df['lat'] - lat)**2 + (map_df['lon'] - lon)**2)**0.5
                         selected_station = map_df.loc[map_df['dist'].idxmin(), 'STATION']
-                        
-                        st.success(f"✅ Station Selected: **{selected_station}**")
-                        filtered_df = filtered_df[filtered_df['STATION'] == selected_station]
+                       
+                        if st.session_state.map_selected_station != selected_station:
+                            st.session_state.map_selected_station = selected_station
+                            st.rerun()
+
         with col_m2:
             st.subheader("Station Summary")
             if not filtered_df.empty:
@@ -477,124 +475,53 @@ else:
                             .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
                             use_container_width=True)
 
-        #ref
         st.markdown("---")
         st.subheader("Detailed Records")
-        
         if filtered_df.empty:
             st.warning("No records found.")
         else:
             display_df = filtered_df.copy()
-        
             if 'Date' in display_df.columns:
                 display_df['Date'] = display_df['Date'].dt.date
-        
-            st.dataframe(
-                display_df.style.format({"FCOUNT": "{:,}"}),
-                use_container_width=True,
-                hide_index=True
-            )
-        
-            # ====================== DOWNLOAD ======================
+            st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}), use_container_width=True, hide_index=True)
+
+            # Download Section for Map Tab
             st.markdown("---")
-        
             col_btn1, col_btn2, col_btn3 = st.columns([1, 3, 1])
-        
             with col_btn2:
-        
                 output = BytesIO()
-        
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        
-                    # Main Records
-                    display_df.to_excel(
-                        writer,
-                        index=False,
-                        sheet_name='Filtered_Records'
-                    )
-        
-                    # Station Summary
+                    display_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
                     station_summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
-                        Total_FCOUNT='sum',
-                        Record_Count='count'
-                    ).sort_values(
-                        'Total_FCOUNT',
-                        ascending=False
-                    ).reset_index()
-        
-                    station_summary.to_excel(
-                        writer,
-                        index=False,
-                        sheet_name='Station_Summary'
-                    )
-        
-                    # Error Summary
+                        Total_FCOUNT='sum', Record_Count='count'
+                    ).sort_values('Total_FCOUNT', ascending=False).reset_index()
+                    station_summary.to_excel(writer, index=False, sheet_name='Station_Summary')
+
                     if 'Error' in filtered_df.columns:
                         error_sum = filtered_df.groupby('Error').agg(
-                            Total_FCOUNT=('FCOUNT', 'sum'),
-                            Occurrences=('FCOUNT', 'count')
-                        ).sort_values(
-                            'Total_FCOUNT',
-                            ascending=False
-                        ).reset_index()
-        
-                        error_sum.to_excel(
-                            writer,
-                            index=False,
-                            sheet_name='Error_Summary'
-                        )
-        
-                    # Category Summary
+                            Total_FCOUNT=('FCOUNT', 'sum'), Occurrences=('FCOUNT', 'count')
+                        ).sort_values('Total_FCOUNT', ascending=False).reset_index()
+                        error_sum.to_excel(writer, index=False, sheet_name='Error_Summary')
                     if 'Category' in filtered_df.columns:
                         cat_sum = filtered_df.groupby('Category').agg(
-                            Total_FCOUNT=('FCOUNT', 'sum'),
-                            Occurrences=('FCOUNT', 'count')
-                        ).sort_values(
-                            'Total_FCOUNT',
-                            ascending=False
-                        ).reset_index()
-        
-                        cat_sum.to_excel(
-                            writer,
-                            index=False,
-                            sheet_name='Category_Summary'
-                        )
-        
-                    # Professional Formatting
-                    for sheet_name, df_sheet in [
-                        ('Filtered_Records', display_df),
-                        ('Station_Summary', station_summary)
-                    ]:
-        
+                            Total_FCOUNT=('FCOUNT', 'sum'), Occurrences=('FCOUNT', 'count')
+                        ).sort_values('Total_FCOUNT', ascending=False).reset_index()
+                        cat_sum.to_excel(writer, index=False, sheet_name='Category_Summary')
+
+                    for sheet_name, df_sheet in [('Filtered_Records', display_df), ('Station_Summary', station_summary)]:
                         if sheet_name in writer.sheets:
-        
                             worksheet = writer.sheets[sheet_name]
-        
                             header_format = writer.book.add_format({
-                                'bold': True,
-                                'bg_color': '#003087',
-                                'font_color': 'white',
-                                'border': 1,
-                                'align': 'center',
-                                'valign': 'vcenter'
+                                'bold': True, 'bg_color': '#003087', 'font_color': 'white',
+                                'border': 1, 'align': 'center', 'valign': 'vcenter'
                             })
-        
-                            # Header Formatting
                             for col_num, value in enumerate(df_sheet.columns.values):
                                 worksheet.write(0, col_num, value, header_format)
-        
-                            # Auto Column Width
                             for idx, col in enumerate(df_sheet.columns):
-        
-                                max_len = max(
-                                    df_sheet[col].astype(str).map(len).max(),
-                                    len(str(col))
-                                ) + 5
-        
+                                max_len = max(df_sheet[col].astype(str).map(len).max(), len(str(col))) + 5
                                 worksheet.set_column(idx, idx, min(max_len, 60))
-        
+
                 output.seek(0)
-        
                 st.download_button(
                     label="⬇️ Download Professional Excel Report",
                     data=output.getvalue(),
