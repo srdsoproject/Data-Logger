@@ -412,6 +412,7 @@ else:
     #Ref
         # ====================== MAP TAB ======================
     st.markdown("<br>", unsafe_allow_html=True)  # Optional small spacing
+        # ====================== MAP TAB ======================
     with tab_map:
         st.subheader("🗺️ Interactive Map View - Click on Station to Filter")
        
@@ -424,7 +425,8 @@ else:
                     st.rerun()
             st.success(f"📍 Currently viewing: **{st.session_state.map_selected_station}**")
 
-        # Main Layout: Map + Side Panel
+        st.markdown("<br>", unsafe_allow_html=True)   # Helps with spacing
+
         col_m1, col_m2 = st.columns([3, 2])
        
         with col_m1:
@@ -479,16 +481,25 @@ else:
                         folium.LayerControl(position="topright", collapsed=False).add_to(m)
                         folium.plugins.Fullscreen().add_to(m)
                        
+                        # ================== IMPROVED COLOR SCHEME ==================
                         max_f = map_df['FCOUNT'].max() or 1
                         for _, row in map_df.iterrows():
                             intensity = min(row['FCOUNT'] / max_f, 1)
-                            radius = 10 + intensity * 20
-                            color = "darkred" if intensity > 0.7 else "red" if intensity > 0.4 else "orange"
-                           
+                            
+                            # Red = High, Orange = Medium, Green = Low
+                            if intensity > 0.7:
+                                color = "darkred"
+                            elif intensity > 0.4:
+                                color = "orange"
+                            else:
+                                color = "green"
+                            
+                            radius = 8 + intensity * 22
+                            
                             folium.CircleMarker(
                                 location=[row['lat'], row['lon']],
                                 radius=radius,
-                                popup=f"<h4>{row['STATION']}</h4><b>FCOUNT:</b> {int(row['FCOUNT']):,}",
+                                popup=f"<h4>{row['STATION']}</h4><b>Total FCOUNT:</b> {int(row['FCOUNT']):,}",
                                 tooltip=f"{row['STATION']} ({int(row['FCOUNT']):,})",
                                 color=color,
                                 fill=True,
@@ -549,8 +560,7 @@ else:
                                 .background_gradient(subset=['Total_FCOUNT'], cmap='Oranges'), 
                                 use_container_width=True, hide_index=True)
 
-        # ================== Detailed Records - Tighter Layout ==================
-        st.markdown("---")   # Single clean divider only
+        st.markdown("---")
         st.subheader("Detailed Records")
         
         if filtered_df.empty:
@@ -561,7 +571,6 @@ else:
                 display_df['Date'] = display_df['Date'].dt.date
             st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}), use_container_width=True, hide_index=True)
             
-            # Download Section
             st.markdown("---")
             col_btn1, col_btn2, col_btn3 = st.columns([1, 3, 1])
             with col_btn2:
