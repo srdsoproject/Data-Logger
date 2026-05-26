@@ -289,28 +289,41 @@ else:
         st.subheader("📊 Overview Dashboard")
                 # ====================== METRICS ======================
         c1, c2, c3, c4 = st.columns(4)
+        
         with c1: 
             st.metric("Total Records", f"{len(filtered_df):,}")
         
         with c2: 
-            st.metric("Total FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).sum():,}")
+            st.metric("Total FCOUNT (All Stations)", 
+                     f"{filtered_df.get('FCOUNT', pd.Series(0)).sum():,}")
         
         with c3:
             if not filtered_df.empty and 'STATION' in filtered_df.columns:
-                # FIXED: Get station with highest TOTAL FCOUNT (sum)
-                station_totals = filtered_df.groupby('STATION')['FCOUNT'].sum()
+                # FIXED: Station with highest TOTAL FCOUNT
+                station_totals = filtered_df.groupby('STATION')['FCOUNT'].sum().sort_values(ascending=False)
+                
                 if not station_totals.empty:
-                    top_station = station_totals.idxmax()
-                    top_fcount = station_totals.max()
-                    st.metric("Top Station", top_station, f"{top_fcount:,}")
+                    top_station = station_totals.index[0]
+                    top_fcount = station_totals.iloc[0]
+                    
+                    st.metric(
+                        label="🏆 Top Station",
+                        value=top_station,
+                        delta=f"{top_fcount:,} (Total FCOUNT)",
+                        delta_color="normal"
+                    )
                 else:
-                    st.metric("Top Station", "N/A", "0")
+                    st.metric("🏆 Top Station", "N/A", "0")
             else:
-                st.metric("Top Station", "N/A", "0")
+                st.metric("🏆 Top Station", "N/A", "0")
         
         with c4: 
-            st.metric("Max FCOUNT (Single Entry)", 
-                     f"{filtered_df.get('FCOUNT', pd.Series(0)).max():,}")
+            st.metric(
+                label="Highest Single Trigger",
+                value=f"{filtered_df.get('FCOUNT', pd.Series(0)).max():,}",
+                delta="Max FCOUNT in one row"
+            )
+
         st.markdown("---")
         col_g1, col_g2 = st.columns([3, 2])
         with col_g1:
