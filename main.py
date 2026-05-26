@@ -287,15 +287,30 @@ else:
 
     with tab_overview:
         st.subheader("📊 Overview Dashboard")
+                # ====================== METRICS ======================
         c1, c2, c3, c4 = st.columns(4)
-        with c1: st.metric("Total Records", f"{len(filtered_df):,}")
-        with c2: st.metric("Total FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).sum():,}")
+        with c1: 
+            st.metric("Total Records", f"{len(filtered_df):,}")
+        
+        with c2: 
+            st.metric("Total FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).sum():,}")
+        
         with c3:
-            if not filtered_df.empty and 'STATION' in filtered_df.columns and not filtered_df['FCOUNT'].empty:
-                top_row = filtered_df.loc[filtered_df['FCOUNT'].idxmax()]
-                st.metric("Top Station", top_row['STATION'], f"{top_row['FCOUNT']:,}")
-        with c4: st.metric("Max FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).max():,}")
-
+            if not filtered_df.empty and 'STATION' in filtered_df.columns:
+                # FIXED: Get station with highest TOTAL FCOUNT (sum)
+                station_totals = filtered_df.groupby('STATION')['FCOUNT'].sum()
+                if not station_totals.empty:
+                    top_station = station_totals.idxmax()
+                    top_fcount = station_totals.max()
+                    st.metric("Top Station", top_station, f"{top_fcount:,}")
+                else:
+                    st.metric("Top Station", "N/A", "0")
+            else:
+                st.metric("Top Station", "N/A", "0")
+        
+        with c4: 
+            st.metric("Max FCOUNT (Single Entry)", 
+                     f"{filtered_df.get('FCOUNT', pd.Series(0)).max():,}")
         st.markdown("---")
         col_g1, col_g2 = st.columns([3, 2])
         with col_g1:
