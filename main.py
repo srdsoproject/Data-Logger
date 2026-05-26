@@ -413,6 +413,7 @@ else:
         # ====================== MAP TAB ======================
     st.markdown("<br>", unsafe_allow_html=True)  # Optional small spacing
         # ====================== MAP TAB ======================
+        # ====================== MAP TAB ======================
     with tab_map:
         st.subheader("🗺️ Interactive Map View - Click on Station to Filter")
        
@@ -425,7 +426,7 @@ else:
                     st.rerun()
             st.success(f"📍 Currently viewing: **{st.session_state.map_selected_station}**")
 
-        st.markdown("<br>", unsafe_allow_html=True)   # Helps with spacing
+        st.markdown("<br>", unsafe_allow_html=True)
 
         col_m1, col_m2 = st.columns([3, 2])
        
@@ -481,26 +482,24 @@ else:
                         folium.LayerControl(position="topright", collapsed=False).add_to(m)
                         folium.plugins.Fullscreen().add_to(m)
                        
-                        # ================== IMPROVED COLOR SCHEME ==================
-                        max_f = map_df['FCOUNT'].max() or 1
+                        # ================== FIXED THRESHOLD COLOR SCHEME ==================
                         for _, row in map_df.iterrows():
-                            intensity = min(row['FCOUNT'] / max_f, 1)
+                            fcount = int(row['FCOUNT'])
                             
-                            # Red = High, Orange = Medium, Green = Low
-                            if intensity > 0.7:
-                                color = "darkred"
-                            elif intensity > 0.4:
+                            if fcount < 600:
+                                color = "green"
+                            elif fcount <= 1200:
                                 color = "orange"
                             else:
-                                color = "green"
+                                color = "darkred"
                             
-                            radius = 8 + intensity * 22
+                            radius = 8 + min(fcount / 50, 25)
                             
                             folium.CircleMarker(
                                 location=[row['lat'], row['lon']],
                                 radius=radius,
-                                popup=f"<h4>{row['STATION']}</h4><b>Total FCOUNT:</b> {int(row['FCOUNT']):,}",
-                                tooltip=f"{row['STATION']} ({int(row['FCOUNT']):,})",
+                                popup=f"<h4>{row['STATION']}</h4><b>Total FCOUNT:</b> {fcount:,}",
+                                tooltip=f"{row['STATION']} ({fcount:,})",
                                 color=color,
                                 fill=True,
                                 fill_color=color,
@@ -524,6 +523,7 @@ else:
                                 st.session_state.map_selected_station = selected_station
                                 st.rerun()
 
+        # Rest of the code (col_m2 + Detailed Records) remains the same as previous version
         with col_m2:
             st.subheader("Station Summary")
             if not filtered_df.empty:
