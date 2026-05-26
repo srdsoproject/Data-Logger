@@ -410,6 +410,7 @@ else:
                     use_container_width=True
                 )
     #Ref
+        # ====================== MAP TAB ======================
     with tab_map:
         st.subheader("🗺️ Interactive Map View - Click on Station to Filter")
        
@@ -421,7 +422,8 @@ else:
                     st.session_state.map_selected_station = None
                     st.rerun()
             st.success(f"📍 Currently viewing: **{st.session_state.map_selected_station}**")
-   
+
+        # Main Layout: Map + Side Panel
         col_m1, col_m2 = st.columns([3, 2])
        
         with col_m1:
@@ -520,7 +522,6 @@ else:
                             .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
                             use_container_width=True)
 
-            # ================== Error & Category Summary ==================
             st.markdown("---")
             st.subheader("Error & Category Summary")
             
@@ -547,8 +548,8 @@ else:
                                 .background_gradient(subset=['Total_FCOUNT'], cmap='Oranges'), 
                                 use_container_width=True, hide_index=True)
 
-        # ================== Detailed Records (Tighter Spacing) ==================
-        st.markdown("---")
+        # ================== Detailed Records - Tighter Layout ==================
+        st.markdown("---")   # Single clean divider only
         st.subheader("Detailed Records")
         
         if filtered_df.empty:
