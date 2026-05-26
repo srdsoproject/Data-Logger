@@ -285,9 +285,10 @@ else:
     # ====================== TABS ======================
     tab_overview, tab_map = st.tabs(["📊 Overview Dashboard", "🗺️ Map View"])
 
-    with tab_overview:
+        with tab_overview:
         st.subheader("📊 Overview Dashboard")
-                # ====================== METRICS ======================
+        
+        # ====================== METRICS ======================
         c1, c2, c3, c4 = st.columns(4)
         
         with c1: 
@@ -299,30 +300,27 @@ else:
         
         with c3:
             if not filtered_df.empty and 'STATION' in filtered_df.columns:
-                # FIXED: Station with highest TOTAL FCOUNT
                 station_totals = filtered_df.groupby('STATION')['FCOUNT'].sum().sort_values(ascending=False)
                 
                 if not station_totals.empty:
                     top_station = station_totals.index[0]
-                    top_fcount = station_totals.iloc[0]
-                    
-                    st.metric(
-                        label="🏆 Top Station",
-                        value=top_station,
-                        delta=f"{top_fcount:,} (Total FCOUNT)",
-                        delta_color="normal"
-                    )
+                    st.metric("🏆 Top Station", top_station)
                 else:
-                    st.metric("🏆 Top Station", "N/A", "0")
+                    st.metric("🏆 Top Station", "N/A")
             else:
-                st.metric("🏆 Top Station", "N/A", "0")
+                st.metric("🏆 Top Station", "N/A")
         
-        with c4: 
-            st.metric(
-                label="Highest Single Trigger",
-                value=f"{filtered_df.get('FCOUNT', pd.Series(0)).max():,}",
-                delta="Max FCOUNT in one row"
-            )
+        with c4:
+            if not filtered_df.empty and 'STATION' in filtered_df.columns:
+                station_totals = filtered_df.groupby('STATION')['FCOUNT'].sum().sort_values(ascending=False)
+                
+                if not station_totals.empty:
+                    top_fcount = station_totals.iloc[0]
+                    st.metric("Top Station FCOUNT", f"{top_fcount:,}")
+                else:
+                    st.metric("Top Station FCOUNT", "0")
+            else:
+                st.metric("Top Station FCOUNT", "0")
 
         st.markdown("---")
         col_g1, col_g2 = st.columns([3, 2])
