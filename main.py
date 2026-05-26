@@ -410,7 +410,6 @@ else:
                     use_container_width=True
                 )
     #Ref
-        # ====================== MAP TAB ======================
     with tab_map:
         st.subheader("🗺️ Interactive Map View - Click on Station to Filter")
        
@@ -521,12 +520,11 @@ else:
                             .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
                             use_container_width=True)
 
-            # ================== NEW: Error & Category Summary ==================
+            # ================== Error & Category Summary ==================
             st.markdown("---")
             st.subheader("Error & Category Summary")
             
             col_s1, col_s2 = st.columns(2)
-            
             with col_s1:
                 if 'Error' in filtered_df.columns and not filtered_df.empty:
                     st.markdown("**Error Summary**")
@@ -549,8 +547,10 @@ else:
                                 .background_gradient(subset=['Total_FCOUNT'], cmap='Oranges'), 
                                 use_container_width=True, hide_index=True)
 
+        # ================== Detailed Records (Tighter Spacing) ==================
         st.markdown("---")
         st.subheader("Detailed Records")
+        
         if filtered_df.empty:
             st.warning("No records found.")
         else:
@@ -559,7 +559,7 @@ else:
                 display_df['Date'] = display_df['Date'].dt.date
             st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}), use_container_width=True, hide_index=True)
             
-            # Download Section (unchanged)
+            # Download Section
             st.markdown("---")
             col_btn1, col_btn2, col_btn3 = st.columns([1, 3, 1])
             with col_btn2:
