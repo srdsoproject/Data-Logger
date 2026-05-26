@@ -411,6 +411,7 @@ else:
                 )
     #Ref
         # ====================== MAP TAB ======================
+    st.markdown("<br>", unsafe_allow_html=True)  # Optional small spacing
     with tab_map:
         st.subheader("🗺️ Interactive Map View - Click on Station to Filter")
        
