@@ -304,11 +304,11 @@ else:
                 
                 if not station_totals.empty:
                     top_station = station_totals.index[0]
-                    st.metric("🏆 Top Station", top_station)
+                    st.metric("⚠️ Top Station", top_station)
                 else:
-                    st.metric("🏆 Top Station", "N/A")
+                    st.metric("⚠️ Top Station", "N/A")
             else:
-                st.metric("🏆 Top Station", "N/A")
+                st.metric("⚠️ Top Station", "N/A")
         
         with c4:
             if not filtered_df.empty and 'STATION' in filtered_df.columns:
