@@ -175,8 +175,7 @@ def load_data_from_gsheet():
             df['FCOUNT'] = pd.to_numeric(df['FCOUNT'], errors='coerce').fillna(0).astype(int)
         if 'DATE' in df.columns:
             df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
-            df['Month'] = df['DATE'].dt.strftime('%B')
-       
+            df['MONTH'] = df['DATE'].dt.strftime('%B')
         return df
     except Exception as e:
         st.error(f"Failed to load data: {e}")
@@ -215,18 +214,17 @@ else:
         stations = sorted(df_original['STATION'].dropna().unique().tolist()) if 'STATION' in df_original.columns else []
         selected_stations = st.multiselect("STATION", options=stations, default=[], key="stn_key")
     
-    with col_f1[1]:
-        errors = sorted(df_original['ERROR MAIN CATEGORY'].dropna().unique().tolist()) if 'ERROR MAIN CATEGORY' in df_original.columns else []
-        selected_errors = st.multiselect("ERROR MAIN CATEGORY", options=errors, default=[], key="err_key")
-    
-    with col_f1[2]:
-        categories = sorted(df_original['DDEPARTMENT'].dropna().unique().tolist()) if 'DDEPARTMENT' in df_original.columns else []
-        selected_categories = st.multiselect("DDEPARTMENT", options=categories, default=[], key="cat_key")
-    
-    with col_f1[3]:
-        months = sorted(df_original['Month'].dropna().unique().tolist()) if 'Month' in df_original.columns else []
-        selected_months = st.multiselect("Month", options=months, default=[], key="month_key")
-    
+        with col_f1[1]:
+            errors = sorted(df_original['ERROR MAIN CATEGORY'].dropna().unique().tolist()) if 'ERROR MAIN CATEGORY' in df_original.columns else []
+            selected_errors = st.multiselect("ERROR MAIN CATEGORY", options=errors, default=[], key="err_key")
+        
+        with col_f1[2]:
+            categories = sorted(df_original['DEPARTMENT'].dropna().unique().tolist()) if 'DEPARTMENT' in df_original.columns else []
+            selected_categories = st.multiselect("DEPARTMENT", options=categories, default=[], key="cat_key")
+        
+        with col_f1[3]:
+            months = sorted(df_original['MONTH'].dropna().unique().tolist()) if 'MONTH' in df_original.columns else []
+            selected_months = st.multiselect("MONTH", options=months, default=[], key="month_key")
     col_f2 = st.columns([2, 2, 2, 2])
     
     with col_f2[0]:
@@ -248,13 +246,13 @@ else:
     col_date = st.columns([2, 2, 1])
     with col_date[0]:
         from_date = st.date_input(
-            "From Date", 
+            "FROM DATE", 
             value=df_original['DATE'].min().date() if not df_original.empty and 'DATE' in df_original.columns else pd.Timestamp.now().date(), 
             key="from_date_key"
         )
     with col_date[1]:
         to_date = st.date_input(
-            "To Date", 
+            "TO DATE", 
             value=df_original['DATE'].max().date() if not df_original.empty and 'DATE' in df_original.columns else pd.Timestamp.now().date(), 
             key="to_date_key"
         )
