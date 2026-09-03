@@ -269,8 +269,8 @@ else:
     if selected_errors and 'ERROR MAIN CATEGORY' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['ERROR MAIN CATEGORY'].isin(selected_errors)]
     
-    if selected_categories and 'DDEPARTMENT' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['DDEPARTMENT'].isin(selected_categories)]
+    if selected_categories and 'DEPARTMENT' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['DEPARTMENT'].isin(selected_categories)]
     
     if selected_months and 'Month' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['Month'].isin(selected_months)]
@@ -369,9 +369,9 @@ else:
                             .background_gradient(subset=['Total_FCOUNT'], cmap='Reds'), use_container_width=True)
         
         with col_s2:
-            if 'DDEPARTMENT' in filtered_df.columns and not filtered_df.empty:
+            if 'DEPARTMENT' in filtered_df.columns and not filtered_df.empty:
                 st.markdown('<p class="section-header">Category Summary</p>', unsafe_allow_html=True)
-                cat_sum = filtered_df.groupby('DDEPARTMENT').agg(
+                cat_sum = filtered_df.groupby('DEPARTMENT').agg(
                     Total_FCOUNT=('FCOUNT', 'sum'), Occurrences=('FCOUNT', 'count')
                 ).sort_values('Total_FCOUNT', ascending=False).reset_index()
                 st.dataframe(cat_sum.style.format({"Total_FCOUNT": "{:,}", "Occurrences": "{:,}"})
@@ -403,7 +403,7 @@ else:
                     
                     if 'ERROR MAIN CATEGORY' in filtered_df.columns:
                         error_sum.to_excel(writer, index=False, sheet_name='Error_Summary')
-                    if 'DDEPARTMENT' in filtered_df.columns:
+                    if 'DEPARTMENT' in filtered_df.columns:
                         cat_sum.to_excel(writer, index=False, sheet_name='Category_Summary')
                     
                     for sheet_name, df_sheet in [('Filtered_Records', display_df), ('Station_Summary', station_summary)]:
@@ -557,24 +557,32 @@ else:
             with col_s1:
                 if 'ERROR MAIN CATEGORY' in filtered_df.columns and not filtered_df.empty:
                     st.markdown("**Error Summary**")
-                    error_sum = filtered_df.groupby('ERROR MAIN CATEGORY').agg(
-                        Total_FCOUNT=('FCOUNT', 'sum'), 
-                        Occurrences=('FCOUNT', 'count')
-                    ).sort_values('Total_FCOUNT', ascending=False).reset_index()
-                    st.dataframe(error_sum.style.format({"Total_FCOUNT": "{:,}", "Occurrences": "{:,}"})
-                                .background_gradient(subset=['Total_FCOUNT'], cmap='Reds'), 
-                                use_container_width=True, hide_index=True)
+                    error_sum = (
+                        filtered_df.groupby('ERROR MAIN CATEGORY')
+                        .size()
+                        .reset_index(name='Occurrences')
+                        .sort_values('Occurrences', ascending=False)
+                    )
+                    st.dataframe(
+                        error_sum.style.format({"Occurrences": "{:,}"}),
+                        use_container_width=True,
+                        hide_index=True
+                    )
             
             with col_s2:
-                if 'DDEPARTMENT' in filtered_df.columns and not filtered_df.empty:
+                if 'DEPARTMENT' in filtered_df.columns and not filtered_df.empty:
                     st.markdown("**Category Summary**")
-                    cat_sum = filtered_df.groupby('DDEPARTMENT').agg(
-                        Total_FCOUNT=('FCOUNT', 'sum'), 
-                        Occurrences=('FCOUNT', 'count')
-                    ).sort_values('Total_FCOUNT', ascending=False).reset_index()
-                    st.dataframe(cat_sum.style.format({"Total_FCOUNT": "{:,}", "Occurrences": "{:,}"})
-                                .background_gradient(subset=['Total_FCOUNT'], cmap='Oranges'), 
-                                use_container_width=True, hide_index=True)
+                    cat_sum = (
+                        filtered_df.groupby('DEPARTMENT')
+                        .size()
+                        .reset_index(name='Occurrences')
+                        .sort_values('Occurrences', ascending=False)
+                    )
+                    st.dataframe(
+                        cat_sum.style.format({"Occurrences": "{:,}"}),
+                        use_container_width=True,
+                        hide_index=True
+        )
         
         st.markdown("---")
         st.subheader("Detailed Records")
@@ -601,7 +609,7 @@ else:
                     
                     if 'ERROR MAIN CATEGORY' in filtered_df.columns:
                         error_sum.to_excel(writer, index=False, sheet_name='Error_Summary')
-                    if 'DDEPARTMENT' in filtered_df.columns:
+                    if 'DEPARTMENT' in filtered_df.columns:
                         cat_sum.to_excel(writer, index=False, sheet_name='Category_Summary')
                     
                     for sheet_name, df_sheet in [('Filtered_Records', display_df), ('Station_Summary', station_summary)]:
