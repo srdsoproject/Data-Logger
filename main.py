@@ -132,7 +132,6 @@ station_coords = {
 # ====================== SESSION STATE ======================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
-
 if "map_selected_station" not in st.session_state:
     st.session_state.map_selected_station = None
 
@@ -174,9 +173,9 @@ def load_data_from_gsheet():
        
         if 'FCOUNT' in df.columns:
             df['FCOUNT'] = pd.to_numeric(df['FCOUNT'], errors='coerce').fillna(0).astype(int)
-        if 'Date' in df.columns:
-            df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-            df['Month'] = df['Date'].dt.strftime('%B')
+        if 'DATE' in df.columns:
+            df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
+            df['Month'] = df['DATE'].dt.strftime('%B')
        
         return df
     except Exception as e:
@@ -200,91 +199,110 @@ else:
     st.markdown('<p class="subtitle">Central Railway • Solapur Division • Safety Branch</p>', unsafe_allow_html=True)
     st.caption(f"**Logged in as:** {st.session_state.user_name}")
     st.divider()
-
+    
     with st.sidebar:
         st.header("🔧 Controls")
         if st.button("🔄 Refresh Data", type="primary", use_container_width=True):
             refresh_data()
-
+    
     df_original = load_data_from_gsheet()
-
+    
     # ====================== LIVE FILTERS ======================
     st.markdown("### 🔍 Live Filters")
     col_f1 = st.columns([2, 2, 2, 2])
+    
     with col_f1[0]:
         stations = sorted(df_original['STATION'].dropna().unique().tolist()) if 'STATION' in df_original.columns else []
         selected_stations = st.multiselect("STATION", options=stations, default=[], key="stn_key")
+    
     with col_f1[1]:
-        errors = sorted(df_original['Error'].dropna().unique().tolist()) if 'Error' in df_original.columns else []
-        selected_errors = st.multiselect("Error", options=errors, default=[], key="err_key")
+        errors = sorted(df_original['ERROR MAIN CATEGORY'].dropna().unique().tolist()) if 'ERROR MAIN CATEGORY' in df_original.columns else []
+        selected_errors = st.multiselect("ERROR MAIN CATEGORY", options=errors, default=[], key="err_key")
+    
     with col_f1[2]:
-        categories = sorted(df_original['Category'].dropna().unique().tolist()) if 'Category' in df_original.columns else []
-        selected_categories = st.multiselect("Category", options=categories, default=[], key="cat_key")
+        categories = sorted(df_original['DDEPARTMENT'].dropna().unique().tolist()) if 'DDEPARTMENT' in df_original.columns else []
+        selected_categories = st.multiselect("DDEPARTMENT", options=categories, default=[], key="cat_key")
+    
     with col_f1[3]:
         months = sorted(df_original['Month'].dropna().unique().tolist()) if 'Month' in df_original.columns else []
         selected_months = st.multiselect("Month", options=months, default=[], key="month_key")
-
+    
     col_f2 = st.columns([2, 2, 2, 2])
+    
     with col_f2[0]:
         fcount_list = sorted(df_original['FCOUNT'].dropna().unique().tolist()) if 'FCOUNT' in df_original.columns else []
         selected_fcount = st.multiselect("FCOUNT", options=fcount_list, default=[], key="fcount_key")
+    
     with col_f2[1]:
-        fault_list = sorted(df_original['FAULT MESSAGE'].dropna().unique().tolist()) if 'FAULT MESSAGE' in df_original.columns else []
-        selected_fault = st.multiselect("FAULT MESSAGE", options=fault_list, default=[], key="fault_key")
+        fault_list = sorted(df_original['DL FAULT MESSAGE'].dropna().unique().tolist()) if 'DL FAULT MESSAGE' in df_original.columns else []
+        selected_fault = st.multiselect("DL FAULT MESSAGE", options=fault_list, default=[], key="fault_key")
+    
     with col_f2[2]:
-        remark_list = sorted(df_original['REMARK'].dropna().unique().tolist()) if 'REMARK' in df_original.columns else []
-        selected_remark = st.multiselect("REMARK", options=remark_list, default=[], key="remark_key")
+        remark_list = sorted(df_original['REMARKS GIVEN BY S&T'].dropna().unique().tolist()) if 'REMARKS GIVEN BY S&T' in df_original.columns else []
+        selected_remark = st.multiselect("REMARKS GIVEN BY S&T", options=remark_list, default=[], key="remark_key")
+    
     with col_f2[3]:
         time_list = sorted(df_original['TIMEDETAILS'].dropna().unique().tolist()) if 'TIMEDETAILS' in df_original.columns else []
         selected_time = st.multiselect("TIMEDETAILS", options=time_list, default=[], key="time_key")
-
+    
     col_date = st.columns([2, 2, 1])
     with col_date[0]:
-        from_date = st.date_input("From Date", 
-                                  value=df_original['Date'].min().date() if not df_original.empty else pd.Timestamp.now().date(), 
-                                  key="from_date_key")
+        from_date = st.date_input(
+            "From Date", 
+            value=df_original['DATE'].min().date() if not df_original.empty and 'DATE' in df_original.columns else pd.Timestamp.now().date(), 
+            key="from_date_key"
+        )
     with col_date[1]:
-        to_date = st.date_input("To Date", 
-                                value=df_original['Date'].max().date() if not df_original.empty else pd.Timestamp.now().date(), 
-                                key="to_date_key")
-
+        to_date = st.date_input(
+            "To Date", 
+            value=df_original['DATE'].max().date() if not df_original.empty and 'DATE' in df_original.columns else pd.Timestamp.now().date(), 
+            key="to_date_key"
+        )
+    
     st.divider()
-
+    
     # ====================== APPLY FILTERS ======================
     filtered_df = df_original.copy()
-
-    if 'Date' in filtered_df.columns:
+    
+    if 'DATE' in filtered_df.columns:
         filtered_df = filtered_df[
-            (filtered_df['Date'].dt.date >= from_date) &
-            (filtered_df['Date'].dt.date <= to_date)
+            (filtered_df['DATE'].dt.date >= from_date) &
+            (filtered_df['DATE'].dt.date <= to_date)
         ]
-
+    
     if selected_stations:
         filtered_df = filtered_df[filtered_df['STATION'].isin(selected_stations)]
-    if selected_errors and 'Error' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['Error'].isin(selected_errors)]
-    if selected_categories and 'Category' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['Category'].isin(selected_categories)]
+    
+    if selected_errors and 'ERROR MAIN CATEGORY' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['ERROR MAIN CATEGORY'].isin(selected_errors)]
+    
+    if selected_categories and 'DDEPARTMENT' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['DDEPARTMENT'].isin(selected_categories)]
+    
     if selected_months and 'Month' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['Month'].isin(selected_months)]
+    
     if selected_fcount and 'FCOUNT' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['FCOUNT'].isin(selected_fcount)]
-    if selected_fault and 'FAULT MESSAGE' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['FAULT MESSAGE'].isin(selected_fault)]
-    if selected_remark and 'REMARK' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['REMARK'].isin(selected_remark)]
+    
+    if selected_fault and 'DL FAULT MESSAGE' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['DL FAULT MESSAGE'].isin(selected_fault)]
+    
+    if selected_remark and 'REMARKS GIVEN BY S&T' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['REMARKS GIVEN BY S&T'].isin(selected_remark)]
+    
     if selected_time and 'TIMEDETAILS' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['TIMEDETAILS'].isin(selected_time)]
-
+    
     # Map Selection Override
     if st.session_state.map_selected_station:
         filtered_df = filtered_df[filtered_df['STATION'] == st.session_state.map_selected_station]
-
+    
     st.divider()
-
+    
     # ====================== TABS ======================
     tab_overview, tab_map = st.tabs(["📊 Overview Dashboard", "🗺️ Map View"])
-
+    
     with tab_overview:
         st.subheader("📊 Overview Dashboard")
         
@@ -321,9 +339,11 @@ else:
                     st.metric("Top Station FCOUNT", "0")
             else:
                 st.metric("Top Station FCOUNT", "0")
-
+        
         st.markdown("---")
+        
         col_g1, col_g2 = st.columns([3, 2])
+        
         with col_g1:
             st.markdown('<p class="section-header">Top 15 Stations by FCOUNT</p>', unsafe_allow_html=True)
             if not filtered_df.empty:
@@ -332,7 +352,7 @@ else:
                              color='FCOUNT', color_continuous_scale='RdYlGn_r')
                 fig.update_layout(height=520, xaxis_tickangle=45)
                 st.plotly_chart(fig, use_container_width=True)
-
+        
         with col_g2:
             st.markdown('<p class="section-header">Station Summary</p>', unsafe_allow_html=True)
             if not filtered_df.empty:
@@ -342,36 +362,39 @@ else:
                 st.dataframe(summary.style.format({"Total_FCOUNT": "{:,}", "Records": "{:,}"})
                             .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
                             use_container_width=True)
-
+        
         # Error & Category Summary
         col_s1, col_s2 = st.columns(2)
+        
         with col_s1:
-            if 'Error' in filtered_df.columns and not filtered_df.empty:
+            if 'ERROR MAIN CATEGORY' in filtered_df.columns and not filtered_df.empty:
                 st.markdown('<p class="section-header">Error Summary</p>', unsafe_allow_html=True)
-                error_sum = filtered_df.groupby('Error').agg(
+                error_sum = filtered_df.groupby('ERROR MAIN CATEGORY').agg(
                     Total_FCOUNT=('FCOUNT', 'sum'), Occurrences=('FCOUNT', 'count')
                 ).sort_values('Total_FCOUNT', ascending=False).reset_index()
                 st.dataframe(error_sum.style.format({"Total_FCOUNT": "{:,}", "Occurrences": "{:,}"})
                             .background_gradient(subset=['Total_FCOUNT'], cmap='Reds'), use_container_width=True)
+        
         with col_s2:
-            if 'Category' in filtered_df.columns and not filtered_df.empty:
+            if 'DDEPARTMENT' in filtered_df.columns and not filtered_df.empty:
                 st.markdown('<p class="section-header">Category Summary</p>', unsafe_allow_html=True)
-                cat_sum = filtered_df.groupby('Category').agg(
+                cat_sum = filtered_df.groupby('DDEPARTMENT').agg(
                     Total_FCOUNT=('FCOUNT', 'sum'), Occurrences=('FCOUNT', 'count')
                 ).sort_values('Total_FCOUNT', ascending=False).reset_index()
                 st.dataframe(cat_sum.style.format({"Total_FCOUNT": "{:,}", "Occurrences": "{:,}"})
                             .background_gradient(subset=['Total_FCOUNT'], cmap='Oranges'), use_container_width=True)
-
+        
         st.markdown("---")
         st.markdown('<p class="section-header">Detailed Records</p>', unsafe_allow_html=True)
+        
         if filtered_df.empty:
             st.warning("No records found.")
         else:
             display_df = filtered_df.copy()
-            if 'Date' in display_df.columns:
-                display_df['Date'] = display_df['Date'].dt.date
+            if 'DATE' in display_df.columns:
+                display_df['DATE'] = display_df['DATE'].dt.date
             st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}), use_container_width=True, hide_index=True)
-
+            
             # Download Section
             st.markdown("---")
             col_btn1, col_btn2, col_btn3 = st.columns([1, 3, 1])
@@ -379,15 +402,17 @@ else:
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                     display_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
+                    
                     station_summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
                         Total_FCOUNT='sum', Record_Count='count'
                     ).sort_values('Total_FCOUNT', ascending=False).reset_index()
                     station_summary.to_excel(writer, index=False, sheet_name='Station_Summary')
-                    if 'Error' in filtered_df.columns:
+                    
+                    if 'ERROR MAIN CATEGORY' in filtered_df.columns:
                         error_sum.to_excel(writer, index=False, sheet_name='Error_Summary')
-                    if 'Category' in filtered_df.columns:
+                    if 'DDEPARTMENT' in filtered_df.columns:
                         cat_sum.to_excel(writer, index=False, sheet_name='Category_Summary')
-
+                    
                     for sheet_name, df_sheet in [('Filtered_Records', display_df), ('Station_Summary', station_summary)]:
                         if sheet_name in writer.sheets:
                             worksheet = writer.sheets[sheet_name]
@@ -400,6 +425,7 @@ else:
                             for idx, col in enumerate(df_sheet.columns):
                                 max_len = max(df_sheet[col].astype(str).map(len).max(), len(str(col))) + 5
                                 worksheet.set_column(idx, idx, min(max_len, 60))
+                
                 output.seek(0)
                 st.download_button(
                     label="⬇️ Download Professional Excel Report",
@@ -409,11 +435,8 @@ else:
                     type="primary",
                     use_container_width=True
                 )
-    #Ref
-        # ====================== MAP TAB ======================
-    st.markdown("<br>", unsafe_allow_html=True)  # Optional small spacing
-        # ====================== MAP TAB ======================
-        # ====================== MAP TAB ======================
+    
+    # ====================== MAP TAB ======================
     with tab_map:
         st.subheader("🗺️ Interactive Map View - Click on Station to Filter")
        
@@ -425,9 +448,9 @@ else:
                     st.session_state.map_selected_station = None
                     st.rerun()
             st.success(f"📍 Currently viewing: **{st.session_state.map_selected_station}**")
-
+        
         st.markdown("<br>", unsafe_allow_html=True)
-
+        
         col_m1, col_m2 = st.columns([3, 2])
        
         with col_m1:
@@ -522,8 +545,7 @@ else:
                             if st.session_state.map_selected_station != selected_station:
                                 st.session_state.map_selected_station = selected_station
                                 st.rerun()
-
-        # Rest of the code (col_m2 + Detailed Records) remains the same as previous version
+        
         with col_m2:
             st.subheader("Station Summary")
             if not filtered_df.empty:
@@ -533,15 +555,16 @@ else:
                 st.dataframe(summary.style.format({"Total_FCOUNT": "{:,}", "Records": "{:,}"})
                             .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
                             use_container_width=True)
-
+            
             st.markdown("---")
             st.subheader("Error & Category Summary")
             
             col_s1, col_s2 = st.columns(2)
+            
             with col_s1:
-                if 'Error' in filtered_df.columns and not filtered_df.empty:
+                if 'ERROR MAIN CATEGORY' in filtered_df.columns and not filtered_df.empty:
                     st.markdown("**Error Summary**")
-                    error_sum = filtered_df.groupby('Error').agg(
+                    error_sum = filtered_df.groupby('ERROR MAIN CATEGORY').agg(
                         Total_FCOUNT=('FCOUNT', 'sum'), 
                         Occurrences=('FCOUNT', 'count')
                     ).sort_values('Total_FCOUNT', ascending=False).reset_index()
@@ -550,16 +573,16 @@ else:
                                 use_container_width=True, hide_index=True)
             
             with col_s2:
-                if 'Category' in filtered_df.columns and not filtered_df.empty:
+                if 'DDEPARTMENT' in filtered_df.columns and not filtered_df.empty:
                     st.markdown("**Category Summary**")
-                    cat_sum = filtered_df.groupby('Category').agg(
+                    cat_sum = filtered_df.groupby('DDEPARTMENT').agg(
                         Total_FCOUNT=('FCOUNT', 'sum'), 
                         Occurrences=('FCOUNT', 'count')
                     ).sort_values('Total_FCOUNT', ascending=False).reset_index()
                     st.dataframe(cat_sum.style.format({"Total_FCOUNT": "{:,}", "Occurrences": "{:,}"})
                                 .background_gradient(subset=['Total_FCOUNT'], cmap='Oranges'), 
                                 use_container_width=True, hide_index=True)
-
+        
         st.markdown("---")
         st.subheader("Detailed Records")
         
@@ -567,8 +590,8 @@ else:
             st.warning("No records found.")
         else:
             display_df = filtered_df.copy()
-            if 'Date' in display_df.columns:
-                display_df['Date'] = display_df['Date'].dt.date
+            if 'DATE' in display_df.columns:
+                display_df['DATE'] = display_df['DATE'].dt.date
             st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}), use_container_width=True, hide_index=True)
             
             st.markdown("---")
@@ -577,13 +600,15 @@ else:
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                     display_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
+                    
                     station_summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
                         Total_FCOUNT='sum', Record_Count='count'
                     ).sort_values('Total_FCOUNT', ascending=False).reset_index()
                     station_summary.to_excel(writer, index=False, sheet_name='Station_Summary')
-                    if 'Error' in filtered_df.columns:
+                    
+                    if 'ERROR MAIN CATEGORY' in filtered_df.columns:
                         error_sum.to_excel(writer, index=False, sheet_name='Error_Summary')
-                    if 'Category' in filtered_df.columns:
+                    if 'DDEPARTMENT' in filtered_df.columns:
                         cat_sum.to_excel(writer, index=False, sheet_name='Category_Summary')
                     
                     for sheet_name, df_sheet in [('Filtered_Records', display_df), ('Station_Summary', station_summary)]:
@@ -598,6 +623,7 @@ else:
                             for idx, col in enumerate(df_sheet.columns):
                                 max_len = max(df_sheet[col].astype(str).map(len).max(), len(str(col))) + 5
                                 worksheet.set_column(idx, idx, min(max_len, 60))
+                
                 output.seek(0)
                 st.download_button(
                     label="⬇️ Download Professional Excel Report",
@@ -607,5 +633,5 @@ else:
                     type="primary",
                     use_container_width=True
                 )
-
+    
     st.caption("🚄 Safety Branch | Central Railway, Solapur Division")
