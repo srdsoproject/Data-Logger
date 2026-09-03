@@ -245,17 +245,12 @@ else:
     
     col_date = st.columns([2, 2, 1])
     with col_date[0]:
-        from_date = st.date_input(
-            "FROM DATE", 
-            value=df_original['DATE'].min().date() if not df_original.empty and 'DATE' in df_original.columns else pd.Timestamp.now().date(), 
-            key="from_date_key"
-        )
+        min_date = df_original['DATE'].min().date() if (not df_original.empty and 'DATE' in df_original.columns and pd.notna(df_original['DATE'].min())) else pd.Timestamp.now().date()
+        from_date = st.date_input("FROM DATE", value=min_date, key="from_date_key")
+    
     with col_date[1]:
-        to_date = st.date_input(
-            "TO DATE", 
-            value=df_original['DATE'].max().date() if not df_original.empty and 'DATE' in df_original.columns else pd.Timestamp.now().date(), 
-            key="to_date_key"
-        )
+        max_date = df_original['DATE'].max().date() if (not df_original.empty and 'DATE' in df_original.columns and pd.notna(df_original['DATE'].max())) else pd.Timestamp.now().date()
+        to_date = st.date_input("TO DATE", value=max_date, key="to_date_key")
     
     st.divider()
     
