@@ -416,12 +416,7 @@ else:
                     .set_table_styles([
                         {
                             'selector': 'thead th',
-                            'props': [
-                                ('background-color', '#E8EEF7'),
-                                ('color', '#1F2937'),
-                                ('font-weight', 'bold'),
-                                ('border-bottom', '2px solid #B8C7DC')
-                            ]
+                            'props': [ ('background-color', '#E8EEF7'), ('color', '#000000'), ('font-weight', 'bold'), ('border-bottom', '2px solid #B8C7DC') ]
                         }
                     ]),
                     use_container_width=True,
