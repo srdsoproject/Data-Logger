@@ -359,25 +359,49 @@ else:
         # Error & Category Summary (Category on left, Error on right)
         col_s1, col_s2 = st.columns(2)
         
+
+# ====================== CATEGORY SUMMARY ======================
         with col_s1:
             if 'DEPARTMENT' in filtered_df.columns and not filtered_df.empty:
-                st.markdown('<p class="section-header">Category Summary</p>', unsafe_allow_html=True)
-                cat_sum = filtered_df.groupby('DEPARTMENT').agg(
-                    Total_FCOUNT=('FCOUNT', 'sum'), Cases=('FCOUNT', 'count')
-                ).sort_values('Total_FCOUNT', ascending=False).reset_index()
-                st.dataframe(cat_sum.style.format({"Total_FCOUNT": "{:,}", "Cases": "{:,}"})
-                            .background_gradient(subset=['Total_FCOUNT'], cmap='Oranges'),
-                            use_container_width=True, hide_index=True)
+                st.markdown(
+                    '<p class="section-header">Category Summary</p>',
+                    unsafe_allow_html=True
+                )
         
+                cat_sum = (
+                    filtered_df.groupby('DEPARTMENT')
+                    .size()
+                    .reset_index(name='Cases')
+                    .sort_values('Cases', ascending=False)
+                )
+        
+                st.dataframe(
+                    cat_sum.style.format({"Cases": "{:,}"}),
+                    use_container_width=True,
+                    hide_index=True
+                )
+        
+        
+        # ====================== ERROR SUMMARY ======================
         with col_s2:
             if 'ERROR MAIN CATEGORY' in filtered_df.columns and not filtered_df.empty:
-                st.markdown('<p class="section-header">ERROR MAIN CATEGORY</p>', unsafe_allow_html=True)
-                error_sum = filtered_df.groupby('ERROR MAIN CATEGORY').agg(
-                    Total_FCOUNT=('FCOUNT', 'sum'), Cases=('FCOUNT', 'count')
-                ).sort_values('Total_FCOUNT', ascending=False).reset_index()
-                st.dataframe(error_sum.style.format({"Total_FCOUNT": "{:,}", "Cases": "{:,}"})
-                            .background_gradient(subset=['Total_FCOUNT'], cmap='Reds'),
-                            use_container_width=True, hide_index=True)
+                st.markdown(
+                    '<p class="section-header">ERROR MAIN CATEGORY</p>',
+                    unsafe_allow_html=True
+                )
+        
+                error_sum = (
+                    filtered_df.groupby('ERROR MAIN CATEGORY')
+                    .size()
+                    .reset_index(name='Cases')
+                    .sort_values('Cases', ascending=False)
+                )
+        
+                st.dataframe(
+                    error_sum.style.format({"Cases": "{:,}"}),
+                    use_container_width=True,
+                    hide_index=True
+                )
         
         st.markdown("---")
         st.markdown('<p class="section-header">Detailed Records</p>', unsafe_allow_html=True)
