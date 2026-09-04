@@ -361,6 +361,7 @@ else:
         
 
 # ====================== CATEGORY SUMMARY ======================
+       # ====================== CATEGORY SUMMARY ======================
         with col_s1:
             if 'DEPARTMENT' in filtered_df.columns and not filtered_df.empty:
                 st.markdown(
@@ -376,7 +377,19 @@ else:
                 )
         
                 st.dataframe(
-                    cat_sum.style.format({"Cases": "{:,}"}),
+                    cat_sum.style
+                    .format({"Cases": "{:,}"})
+                    .set_table_styles([
+                        {
+                            'selector': 'thead th',
+                            'props': [
+                                ('background-color', '#E8EEF7'),
+                                ('color', '#1F2937'),
+                                ('font-weight', 'bold'),
+                                ('border-bottom', '2px solid #B8C7DC')
+                            ]
+                        }
+                    ]),
                     use_container_width=True,
                     hide_index=True
                 )
@@ -398,11 +411,22 @@ else:
                 )
         
                 st.dataframe(
-                    error_sum.style.format({"Cases": "{:,}"}),
+                    error_sum.style
+                    .format({"Cases": "{:,}"})
+                    .set_table_styles([
+                        {
+                            'selector': 'thead th',
+                            'props': [
+                                ('background-color', '#E8EEF7'),
+                                ('color', '#1F2937'),
+                                ('font-weight', 'bold'),
+                                ('border-bottom', '2px solid #B8C7DC')
+                            ]
+                        }
+                    ]),
                     use_container_width=True,
                     hide_index=True
-                )
-        
+                )        
         st.markdown("---")
         st.markdown('<p class="section-header">Detailed Records</p>', unsafe_allow_html=True)
         
