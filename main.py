@@ -365,7 +365,7 @@ else:
         with col_s1:
             if 'DEPARTMENT' in filtered_df.columns and not filtered_df.empty:
                 st.markdown(
-                    '<p class="section-header">Category Summary</p>',
+                    '<p class="section-header">DEPARTMENT</p>',
                     unsafe_allow_html=True
                 )
         
