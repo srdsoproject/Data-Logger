@@ -371,7 +371,7 @@ else:
         
         with col_s2:
             if 'ERROR MAIN CATEGORY' in filtered_df.columns and not filtered_df.empty:
-                st.markdown('<p class="section-header">Error Summary</p>', unsafe_allow_html=True)
+                st.markdown('<p class="section-header">ERROR MAIN CATEGORY</p>', unsafe_allow_html=True)
                 error_sum = filtered_df.groupby('ERROR MAIN CATEGORY').agg(
                     Total_FCOUNT=('FCOUNT', 'sum'), Cases=('FCOUNT', 'count')
                 ).sort_values('Total_FCOUNT', ascending=False).reset_index()
@@ -573,7 +573,7 @@ else:
             
             with col_s2:
                 if 'ERROR MAIN CATEGORY' in filtered_df.columns and not filtered_df.empty:
-                    st.markdown("**Error Summary**")
+                    st.markdown("**ERROR MAIN CATEGORY**")
                     error_sum = (
                         filtered_df.groupby('ERROR MAIN CATEGORY')
                         .size()
