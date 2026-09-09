@@ -272,8 +272,8 @@ else:
     if selected_categories and 'DEPARTMENT' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['DEPARTMENT'].isin(selected_categories)]
     
-    if selected_months and 'Month' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['Month'].isin(selected_months)]
+    if selected_months and 'MONTH' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['MONTH'].isin(selected_months)]
     
     if selected_fcount and 'FCOUNT' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['FCOUNT'].isin(selected_fcount)]
