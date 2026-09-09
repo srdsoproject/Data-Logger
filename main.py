@@ -520,26 +520,43 @@ else:
                         m = folium.Map(
                             location=[17.85, 75.80],
                             zoom_start=7.2,
-                            tiles=None,
+                            tiles=None,                 # keep this
                             control_scale=True,
                             zoom_control=True
                         )
-                       
-                        folium.TileLayer("CartoDB positron", name="🗺️ Light Base (Recommended)", control=True, attr="CartoDB").add_to(m)
+                    
+                        # ---- CartoDB with API key from secrets ----
+                        carto_key = st.secrets["carto"]["api_key"]
+                        folium.TileLayer(
+                            tiles=f"https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}.png?key={carto_key}",
+                            name="🗺️ Light Base (Recommended)",
+                            attr='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                            control=True,
+                            subdomains="abcd",
+                            max_zoom=20
+                        ).add_to(m)
+                    
+                        # ---- Other free layers (no key needed) ----
                         folium.TileLayer("OpenStreetMap", name="🌍 OpenStreetMap", control=True).add_to(m)
                         folium.TileLayer(
                             tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-                            attr="Esri World Imagery", name="🌐 Satellite (Esri)", control=True
+                            attr="Esri World Imagery",
+                            name="🌐 Satellite (Esri)",
+                            control=True
                         ).add_to(m)
                         folium.TileLayer(
                             tiles="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
-                            attr="Google", name="🛰️ Google Hybrid", control=True
+                            attr="Google",
+                            name="🛰️ Google Hybrid",
+                            control=True
                         ).add_to(m)
                         folium.TileLayer(
                             tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-                            attr="Google", name="🛰️ Google Satellite", control=True
+                            attr="Google",
+                            name="🛰️ Google Satellite",
+                            control=True
                         ).add_to(m)
-                       
+                    
                         folium.LayerControl(position="topright", collapsed=False).add_to(m)
                         folium.plugins.Fullscreen().add_to(m)
                        
