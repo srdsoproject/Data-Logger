@@ -400,178 +400,706 @@ def get_jurisdiction(station, department):
     return SNT_ADSTE.get(stn, SNT_ADSTE.get(station, "Unclassified"))
 
 # ====================== IMPROVED AI CHATBOT ======================
+"""
+==========================================================================
+ SMARTER DATA-LOGGER CHATBOT ENGINE
+==========================================================================
+Drop-in replacement for the "IMPROVED AI CHATBOT" section of your
+Streamlit app (everything between the `similarity()` function and the
+`SESSION STATE` section). Keeps the same call signature:
+
+    answer = ask_chatbot(user_question, df_original)
+
+WHY THIS IS BETTER THAN THE OLD VERSION
+----------------------------------------
+The old version was a long if/elif chain: each block only fired if the
+question matched one of a handful of hardcoded phrases, so anything
+phrased slightly differently ("which station is worst this year?",
+"compare WADI and SUR", "stations above 800 FCOUNT") fell straight into
+the generic fallback message.
+
+This version instead:
+  1. Extracts ENTITIES from the question first (station names, months,
+     departments, jurisdictions, error categories, numbers, comparison
+     targets) using fuzzy matching against the *actual values in your
+     data* — not a fixed keyword list.
+  2. Scores the question against a ranked list of INTENTS (top/bottom
+     station, totals, averages, breakdowns, comparisons, thresholds,
+     trends, insights) and picks the best match instead of "first rule
+     that fires wins".
+  3. Adds a genuinely new capability: PROACTIVE INSIGHTS — statistical
+     anomaly detection (stations far above the mean), month-over-month
+     spike detection, and "what's driving the numbers" summaries.
+  4. Falls back gracefully with a suggestion instead of just "I don't
+     understand", by naming the closest entity it *did* recognize.
+
+No external API, no extra secrets, no additional pip installs — it only
+uses `re`, `difflib` (already imported in your app) and `pandas`.
+==========================================================================
+"""
+
+import re
+from difflib import SequenceMatcher
+import pandas as pd
+
+
+# ==========================================================================
+# LOW-LEVEL TEXT HELPERS
+# ==========================================================================
+
 def similarity(a, b):
     return SequenceMatcher(None, a.lower(), b.lower()).ratio()
 
+
 def fuzzy_contains(text, candidates, threshold=0.72):
-    words = re.findall(r'\w+', text.lower())
+    """True if any word in `text` fuzzy-matches any phrase/word in `candidates`."""
+    words = re.findall(r"\w+", text.lower())
     for word in words:
         for cand in candidates:
             if similarity(word, cand) >= threshold or cand in word or word in cand:
                 return True
     return False
 
-def detect_month(q):
-    month_map = {
-        "january": "January", "jan": "January", "janury": "January", "janu": "January",
-        "february": "February", "feb": "February", "febuary": "February", "februry": "February",
-        "march": "March", "mar": "March", "marchh": "March",
-        "april": "April", "apr": "April", "aprl": "April",
-        "may": "May",
-        "june": "June", "jun": "June",
-        "july": "July", "jul": "July",
-        "august": "August", "aug": "August", "augest": "August",
-        "september": "September", "sep": "September", "sept": "September", "septmber": "September",
-        "october": "October", "oct": "October", "octber": "October",
-        "november": "November", "nov": "November", "novmber": "November",
-        "december": "December", "dec": "December", "decmber": "December"
-    }
+
+def best_phrase_score(text, phrases):
+    """
+    Score a question against a list of trigger phrases.
+    Multi-word phrases are checked as substrings (with fuzzy word fallback);
+    single words are checked with fuzzy_contains. Returns 0.0-1.0.
+    """
+    q = text.lower()
+    score = 0.0
+    for phrase in phrases:
+        phrase = phrase.lower().strip()
+        if " " in phrase:
+            if phrase in q:
+                score = max(score, 1.0)
+            else:
+                # partial credit if most words of the phrase are present
+                pwords = phrase.split()
+                hits = sum(1 for w in pwords if fuzzy_contains(q, [w]))
+                if hits:
+                    score = max(score, 0.5 * hits / len(pwords))
+        else:
+            if fuzzy_contains(q, [phrase]):
+                score = max(score, 0.85)
+    return score
+
+
+# ==========================================================================
+# ENTITY EXTRACTION
+# ==========================================================================
+
+MONTH_MAP = {
+    "january": "January", "jan": "January", "janury": "January", "janu": "January",
+    "february": "February", "feb": "February", "febuary": "February", "februry": "February",
+    "march": "March", "mar": "March", "marchh": "March",
+    "april": "April", "apr": "April", "aprl": "April",
+    "may": "May",
+    "june": "June", "jun": "June",
+    "july": "July", "jul": "July",
+    "august": "August", "aug": "August", "augest": "August",
+    "september": "September", "sep": "September", "sept": "September", "septmber": "September",
+    "october": "October", "oct": "October", "octber": "October",
+    "november": "November", "nov": "November", "novmber": "November",
+    "december": "December", "dec": "December", "decmber": "December",
+}
+
+DEPT_SYNONYMS = {
+    "engg": "engg", "engineering": "engg", "engeniring": "engg", "engneering": "engg",
+    "optg": "optg", "operating": "optg", "oprating": "optg", "operation": "optg",
+    "elect": "elect", "electrical": "elect", "trd": "trd", "traction": "trd", "ohe": "trd",
+    "snt": "snt", "s&t": "snt", "signal": "snt", "telecom": "snt",
+}
+
+
+def detect_months(q):
+    """Return list of canonical month names mentioned in the question (supports multiple, for comparisons)."""
     q_lower = q.lower()
-    for key, value in month_map.items():
-        if key in q_lower:
-            return value
-    for key, value in month_map.items():
-        if fuzzy_contains(q, [key], threshold=0.75):
-            return value
+    found = []
+    for key, value in MONTH_MAP.items():
+        if re.search(r"\b" + re.escape(key) + r"\b", q_lower) and value not in found:
+            found.append(value)
+    if not found:
+        for key, value in MONTH_MAP.items():
+            if fuzzy_contains(q, [key], threshold=0.78) and value not in found:
+                found.append(value)
+    return found
+
+
+def detect_stations(q, df):
+    """Return list of station names from df['STATION'] fuzzy-matched in the question."""
+    if "STATION" not in df.columns:
+        return []
+    stations = [str(s).strip() for s in df["STATION"].dropna().unique()]
+    q_words = re.findall(r"\w+", q.lower())
+    matches = []
+    for stn in stations:
+        stn_lower = stn.lower()
+        stn_words = stn_lower.split()
+        # exact substring match (handles multi-word station names)
+        if stn_lower in q.lower():
+            matches.append((stn, 1.0))
+            continue
+        # fuzzy single-token match (handles typos in short codes like WADI, SUR)
+        best = max((similarity(w, stn_lower) for w in q_words), default=0)
+        if best > 0.78:
+            matches.append((stn, best))
+    # sort by score, dedupe, return names
+    matches.sort(key=lambda x: -x[1])
+    seen, out = set(), []
+    for name, _ in matches:
+        if name not in seen:
+            out.append(name)
+            seen.add(name)
+    return out
+
+
+def detect_department(q, df):
+    """Return the best-matching actual DEPARTMENT value (or None)."""
+    if "DEPARTMENT" not in df.columns:
+        return None
+    q_lower = q.lower()
+    bucket = None
+    for key, canon in DEPT_SYNONYMS.items():
+        if fuzzy_contains(q_lower, [key], threshold=0.78):
+            bucket = canon
+            break
+    if not bucket:
+        return None
+    dept_values = [str(d) for d in df["DEPARTMENT"].dropna().unique()]
+    keyword_map = {
+        "engg": ["engg", "engineering"],
+        "optg": ["optg", "operating"],
+        "elect": ["elect", "electrical"],
+        "trd": ["trd", "traction"],
+        "snt": ["s&t", "snt", "signal"],
+    }
+    for dv in dept_values:
+        dv_lower = dv.lower()
+        if any(k in dv_lower for k in keyword_map.get(bucket, [])):
+            return dv
     return None
+
+
+def detect_categorical(q, df, column, threshold=0.6):
+    """Generic fuzzy matcher: return the best-matching value of `column` mentioned in `q`, or None."""
+    if column not in df.columns:
+        return None
+    values = [str(v).strip() for v in df[column].dropna().unique()]
+    q_lower = q.lower()
+    best_val, best_score = None, 0.0
+    for v in values:
+        v_lower = v.lower()
+        if v_lower in q_lower:
+            return v
+        score = similarity(q_lower, v_lower)
+        if score > best_score:
+            best_score, best_val = score, v
+    return best_val if best_score >= threshold else None
+
+
+def detect_number(q):
+    """Return first integer found in the question, or None."""
+    m = re.search(r"\d+", q)
+    return int(m.group()) if m else None
+
+
+def detect_top_n(q, default=1):
+    """Detect 'top 5', 'top five', etc. Falls back to `default`."""
+    words_to_num = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+                     "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+    m = re.search(r"top\s+(\d+)", q.lower())
+    if m:
+        return int(m.group(1))
+    for word, num in words_to_num.items():
+        if re.search(r"top\s+" + word, q.lower()):
+            return num
+    return default
+
+
+def detect_threshold(q):
+    """Return (direction, value) e.g. ('above', 800) / ('below', 200), or (None, None)."""
+    q_lower = q.lower()
+    value = detect_number(q)
+    if value is None:
+        return None, None
+    if any(w in q_lower for w in ["more than", "greater than", "above", "exceeding", "over"]):
+        return "above", value
+    if any(w in q_lower for w in ["less than", "below", "under", "fewer than"]):
+        return "below", value
+    return None, None
+
+
+# ==========================================================================
+# INTENT DEFINITIONS (ranked — checked in this priority order,
+# but the highest-scoring intent overall still wins within its tier)
+# ==========================================================================
+
+INTENT_PHRASES = {
+    "greeting": ["hi", "hello", "hey", "good morning", "good afternoon", "good evening", "namaste"],
+    "help": ["help", "what can you do", "commands", "examples", "how to ask", "guide me", "what can i ask"],
+    "insights": ["insight", "insights", "anomaly", "anomalies", "unusual", "summary", "analysis",
+                 "highlight", "highlights", "overview", "concern", "anything wrong",
+                 "what should i look at", "flag", "red flag", "give me a report"],
+    "compare": ["compare", "versus", " vs ", "difference between", "which is worse", "which is better"],
+    "threshold": ["more than", "greater than", "above", "exceeding", "less than", "below", "under", "over"],
+    "top_station": ["top station", "highest station", "which station has highest", "which station has most",
+                     "most fcount", "maximum fcount", "worst station", "problem station",
+                     "station with more cases", "station with most cases", "top 5 station", "top five station"],
+    "bottom_station": ["lowest station", "least station", "minimum fcount", "best performing station",
+                        "fewest cases", "least fcount", "least cases", "safest station"],
+    "average": ["average", "avg", "mean fcount", "per day average", "average per station"],
+    "total_records": ["total record", "how many record", "number of record", "total case",
+                       "how many case", "total entries", "how many entries"],
+    "total_fcount": ["total fcount", "overall fcount", "sum of fcount", "total fault count",
+                      "grand total", "total faults"],
+    "department": ["department", "dept", "engineering department", "operating department",
+                    "electrical department", "s&t department", "engg", "optg"],
+    "jurisdiction": ["jurisdiction", "juris", "which jurisdiction", "aden", "adste", "sse"],
+    "error_category": ["error category", "error type", "fault category", "which error",
+                        "track circuit", "emergency route", "signal failure", "point failure"],
+    "fault_message": ["fault message", "dl fault", "which fault"],
+    "trend": ["trend", "increase", "decrease", "growth", "rising", "falling",
+              "month over month", "compared to last month", "growing", "declining"],
+}
+
+# order matters for tie-breaking equal scores
+INTENT_PRIORITY = [
+    "greeting", "help", "insights", "compare", "threshold", "top_station", "bottom_station",
+    "average", "total_records", "total_fcount", "department", "jurisdiction",
+    "error_category", "fault_message", "trend",
+]
+
+
+def classify_intent(q):
+    scores = {intent: best_phrase_score(q, phrases) for intent, phrases in INTENT_PHRASES.items()}
+    best_intent, best_score = None, 0.0
+    for intent in INTENT_PRIORITY:  # priority order breaks ties
+        s = scores[intent]
+        if s > best_score:
+            best_score, best_intent = s, intent
+    return best_intent, best_score
+
+
+# ==========================================================================
+# PROACTIVE INSIGHTS
+# ==========================================================================
+
+def generate_insights(df):
+    if df is None or df.empty or "STATION" not in df.columns or "FCOUNT" not in df.columns:
+        return "Not enough data in the current view to generate insights."
+
+    insights = []
+
+    station_totals = df.groupby("STATION")["FCOUNT"].sum()
+    if len(station_totals) >= 2:
+        mean_val = station_totals.mean()
+        std_val = station_totals.std()
+        if std_val and std_val > 0:
+            cutoff = mean_val + 1.5 * std_val
+            anomalies = station_totals[station_totals > cutoff].sort_values(ascending=False)
+            if not anomalies.empty:
+                parts = [f"<b>{s}</b> ({int(v):,})" for s, v in anomalies.head(5).items()]
+                insights.append(
+                    "🔺 Stations running well above the network average FCOUNT: " + ", ".join(parts)
+                )
+
+    if "YEAR_MONTH" in df.columns:
+        monthly = df.groupby("YEAR_MONTH")["FCOUNT"].sum().sort_index()
+        if len(monthly) >= 2:
+            last_period, prev_period = monthly.index[-1], monthly.index[-2]
+            last_val, prev_val = monthly.iloc[-1], monthly.iloc[-2]
+            if prev_val > 0:
+                pct = ((last_val - prev_val) / prev_val) * 100
+                direction = "increased" if pct > 0 else "decreased"
+                insights.append(
+                    f"📈 Total FCOUNT {direction} by <b>{abs(pct):.1f}%</b> in {last_period} vs {prev_period}."
+                )
+
+    if "ERROR MAIN CATEGORY" in df.columns:
+        err_counts = df["ERROR MAIN CATEGORY"].dropna().value_counts()
+        if not err_counts.empty:
+            share = err_counts.iloc[0] / err_counts.sum() * 100
+            insights.append(
+                f"⚠️ Most frequent error category: <b>{err_counts.index[0]}</b> "
+                f"({err_counts.iloc[0]:,} cases, {share:.0f}% of all cases)."
+            )
+
+    if "JURISDICTION" in df.columns:
+        jur_counts = df["JURISDICTION"].dropna().value_counts()
+        if not jur_counts.empty:
+            insights.append(
+                f"🏢 Jurisdiction carrying the most cases: <b>{jur_counts.index[0]}</b> "
+                f"({jur_counts.iloc[0]:,} cases)."
+            )
+
+    if "DEPARTMENT" in df.columns:
+        dept_counts = df["DEPARTMENT"].dropna().value_counts()
+        if not dept_counts.empty:
+            insights.append(
+                f"🏭 Department with the most cases: <b>{dept_counts.index[0]}</b> "
+                f"({dept_counts.iloc[0]:,} cases)."
+            )
+
+    if not insights:
+        return "No significant anomalies stand out in the current data view — everything looks within normal range."
+
+    return "<b>📊 Key Insights (based on current filters):</b><br><br>" + "<br>".join(f"• {i}" for i in insights)
+
+
+# ==========================================================================
+# ANSWER BUILDERS (one per intent)
+# ==========================================================================
+
+def _month_suffix(months):
+    if not months:
+        return ""
+    if len(months) == 1:
+        return f" in <b>{months[0]}</b>"
+    return f" across <b>{' & '.join(months)}</b>"
+
+
+def answer_top_station(work_df, months, top_n):
+    if "STATION" not in work_df.columns or "FCOUNT" not in work_df.columns:
+        return "Station or FCOUNT data not available."
+    totals = work_df.groupby("STATION")["FCOUNT"].sum().sort_values(ascending=False)
+    if totals.empty:
+        return "No station data available for this query."
+    suffix = _month_suffix(months)
+    if top_n <= 1:
+        station, value = totals.index[0], int(totals.iloc[0])
+        return f"The station with the highest FCOUNT{suffix} is <b>{station}</b> with <b>{value:,}</b>."
+    top = totals.head(top_n)
+    lines = [f"{i}. <b>{s}</b> → {int(v):,}" for i, (s, v) in enumerate(top.items(), 1)]
+    return f"<b>Top {top_n} Stations by FCOUNT{suffix}:</b><br><br>" + "<br>".join(lines)
+
+
+def answer_bottom_station(work_df, months, top_n):
+    if "STATION" not in work_df.columns or "FCOUNT" not in work_df.columns:
+        return "Station or FCOUNT data not available."
+    totals = work_df.groupby("STATION")["FCOUNT"].sum().sort_values(ascending=True)
+    if totals.empty:
+        return "No station data available for this query."
+    suffix = _month_suffix(months)
+    if top_n <= 1:
+        station, value = totals.index[0], int(totals.iloc[0])
+        return f"The station with the lowest FCOUNT{suffix} is <b>{station}</b> with <b>{value:,}</b>."
+    bottom = totals.head(top_n)
+    lines = [f"{i}. <b>{s}</b> → {int(v):,}" for i, (s, v) in enumerate(bottom.items(), 1)]
+    return f"<b>Bottom {top_n} Stations by FCOUNT{suffix}:</b><br><br>" + "<br>".join(lines)
+
+
+def answer_compare_stations(df, stations, months):
+    work_df = df.copy()
+    if months and "MONTH" in work_df.columns:
+        work_df = work_df[work_df["MONTH"].isin(months)]
+    suffix = _month_suffix(months)
+    rows = []
+    for stn in stations[:4]:
+        stn_df = work_df[work_df["STATION"] == stn]
+        total = int(stn_df["FCOUNT"].sum()) if "FCOUNT" in stn_df.columns else 0
+        count = len(stn_df)
+        rows.append((stn, total, count))
+    if not rows:
+        return "I couldn't find those stations in the data."
+    rows.sort(key=lambda r: -r[1])
+    lines = [f"<b>{s}</b>: {t:,} FCOUNT across {c:,} records" for s, t, c in rows]
+    winner = rows[0][0]
+    return (f"<b>Comparison{suffix}:</b><br><br>" + "<br>".join(lines) +
+            f"<br><br>👉 <b>{winner}</b> has the highest FCOUNT of the group.")
+
+
+def answer_compare_months(df, months):
+    work_df = df.copy()
+    if "MONTH" not in work_df.columns or "FCOUNT" not in work_df.columns:
+        return "Month or FCOUNT data not available."
+    rows = []
+    for m in months[:4]:
+        m_df = work_df[work_df["MONTH"] == m]
+        total = int(m_df["FCOUNT"].sum())
+        count = len(m_df)
+        rows.append((m, total, count))
+    lines = [f"<b>{m}</b>: {t:,} FCOUNT across {c:,} records" for m, t, c in rows]
+    if len(rows) == 2:
+        (m1, t1, _), (m2, t2, _) = rows
+        if t2 > 0:
+            pct = (t1 - t2) / t2 * 100
+            trend_line = f"<br><br>{'📈' if pct >= 0 else '📉'} {m1} is {abs(pct):.1f}% {'higher' if pct >= 0 else 'lower'} than {m2}."
+        else:
+            trend_line = ""
+    else:
+        trend_line = ""
+    return f"<b>Month Comparison:</b><br><br>" + "<br>".join(lines) + trend_line
+
+
+def answer_threshold(work_df, direction, value, months):
+    if "STATION" not in work_df.columns or "FCOUNT" not in work_df.columns:
+        return "Station or FCOUNT data not available."
+    totals = work_df.groupby("STATION")["FCOUNT"].sum()
+    if direction == "above":
+        result = totals[totals > value].sort_values(ascending=False)
+        label = f"more than {value:,}"
+    else:
+        result = totals[totals < value].sort_values(ascending=True)
+        label = f"less than {value:,}"
+    suffix = _month_suffix(months)
+    if result.empty:
+        return f"No stations found with FCOUNT {label}{suffix}."
+    lines = [f"• <b>{s}</b> → {int(v):,}" for s, v in result.head(15).items()]
+    more = f"<br>...and {len(result) - 15} more." if len(result) > 15 else ""
+    return f"<b>Stations with FCOUNT {label}{suffix}</b> ({len(result)} found):<br><br>" + "<br>".join(lines) + more
+
+
+def answer_average(work_df, months):
+    suffix = _month_suffix(months)
+    if "FCOUNT" not in work_df.columns:
+        return "FCOUNT data not available."
+    if work_df.empty:
+        return f"No data available{suffix}."
+    avg_per_record = work_df["FCOUNT"].mean()
+    lines = [f"• Average FCOUNT per record{suffix}: <b>{avg_per_record:,.1f}</b>"]
+    if "STATION" in work_df.columns:
+        avg_per_station = work_df.groupby("STATION")["FCOUNT"].sum().mean()
+        lines.append(f"• Average FCOUNT per station{suffix}: <b>{avg_per_station:,.1f}</b>")
+    if "YEAR_MONTH" in work_df.columns:
+        monthly_counts = work_df.groupby("YEAR_MONTH").size()
+        if not monthly_counts.empty:
+            lines.append(f"• Average records per month: <b>{monthly_counts.mean():,.1f}</b>")
+    return "<br>".join(lines)
+
+
+def answer_department(work_df, department, months):
+    suffix = _month_suffix(months)
+    if department is None or "DEPARTMENT" not in work_df.columns:
+        if "DEPARTMENT" in work_df.columns:
+            counts = work_df["DEPARTMENT"].dropna().value_counts()
+            if counts.empty:
+                return f"No department data available{suffix}."
+            lines = [f"• <b>{d}</b>: {c:,}" for d, c in counts.items()]
+            return f"<b>Department-wise case counts{suffix}:</b><br><br>" + "<br>".join(lines)
+        return "Department data not available."
+    dept_df = work_df[work_df["DEPARTMENT"] == department]
+    total_fcount = int(dept_df["FCOUNT"].sum()) if "FCOUNT" in dept_df.columns else 0
+    return (f"<b>{department}</b>{suffix} has <b>{len(dept_df):,}</b> records "
+            f"totalling <b>{total_fcount:,}</b> FCOUNT.")
+
+
+def answer_jurisdiction(work_df, jurisdiction, months):
+    suffix = _month_suffix(months)
+    if "JURISDICTION" not in work_df.columns:
+        return "Jurisdiction data not available."
+    if jurisdiction:
+        jdf = work_df[work_df["JURISDICTION"] == jurisdiction]
+        total_fcount = int(jdf["FCOUNT"].sum()) if "FCOUNT" in jdf.columns else 0
+        return (f"<b>{jurisdiction}</b>{suffix} has <b>{len(jdf):,}</b> records "
+                f"totalling <b>{total_fcount:,}</b> FCOUNT.")
+    counts = work_df["JURISDICTION"].dropna().value_counts()
+    if counts.empty:
+        return f"No jurisdiction data available{suffix}."
+    top = counts.head(10)
+    lines = [f"• <b>{j}</b>: {c:,}" for j, c in top.items()]
+    return f"<b>Jurisdiction-wise case counts{suffix}</b> (top {len(top)}):<br><br>" + "<br>".join(lines)
+
+
+def answer_error_category(work_df, category, months):
+    suffix = _month_suffix(months)
+    if "ERROR MAIN CATEGORY" not in work_df.columns:
+        return "Error category data not available."
+    if category:
+        cdf = work_df[work_df["ERROR MAIN CATEGORY"] == category]
+        return f"<b>{category}</b> cases{suffix}: <b>{len(cdf):,}</b>."
+    counts = work_df["ERROR MAIN CATEGORY"].dropna().value_counts()
+    if counts.empty:
+        return f"No error category data available{suffix}."
+    lines = [f"• <b>{e}</b>: {c:,}" for e, c in counts.head(10).items()]
+    return f"<b>Error category breakdown{suffix}:</b><br><br>" + "<br>".join(lines)
+
+
+def answer_fault_message(work_df, months):
+    suffix = _month_suffix(months)
+    if "DL FAULT MESSAGE" not in work_df.columns:
+        return "Fault message data not available."
+    counts = work_df["DL FAULT MESSAGE"].dropna().value_counts()
+    if counts.empty:
+        return f"No fault message data available{suffix}."
+    lines = [f"• <b>{f}</b>: {c:,}" for f, c in counts.head(10).items()]
+    return f"<b>Top fault messages{suffix}:</b><br><br>" + "<br>".join(lines)
+
+
+def answer_trend(work_df):
+    if "YEAR_MONTH" not in work_df.columns or "FCOUNT" not in work_df.columns:
+        return "Not enough date information to compute a trend."
+    monthly = work_df.groupby("YEAR_MONTH")["FCOUNT"].sum().sort_index()
+    if len(monthly) < 2:
+        return "Need at least two months of data to compute a trend."
+    lines = [f"• {m}: {int(v):,}" for m, v in monthly.items()]
+    first_val, last_val = monthly.iloc[0], monthly.iloc[-1]
+    if first_val > 0:
+        pct = (last_val - first_val) / first_val * 100
+        direction = "risen" if pct >= 0 else "fallen"
+        summary = f"<br><br>Overall, FCOUNT has {direction} by <b>{abs(pct):.1f}%</b> from {monthly.index[0]} to {monthly.index[-1]}."
+    else:
+        summary = ""
+    return "<b>Monthly FCOUNT Trend:</b><br><br>" + "<br>".join(lines) + summary
+
+
+def answer_station_detail(work_df, station, months):
+    stn_df = work_df[work_df["STATION"] == station]
+    suffix = _month_suffix(months)
+    if stn_df.empty:
+        return f"No records found for station <b>{station}</b>{suffix}."
+    total = int(stn_df["FCOUNT"].sum())
+    count = len(stn_df)
+    lines = [f"• Total FCOUNT: <b>{total:,}</b>", f"• Number of records: <b>{count:,}</b>"]
+    if "ERROR MAIN CATEGORY" in stn_df.columns:
+        top_err = stn_df["ERROR MAIN CATEGORY"].dropna().value_counts()
+        if not top_err.empty:
+            lines.append(f"• Most common error: <b>{top_err.index[0]}</b> ({top_err.iloc[0]:,} cases)")
+    if "DEPARTMENT" in stn_df.columns:
+        top_dept = stn_df["DEPARTMENT"].dropna().value_counts()
+        if not top_dept.empty:
+            lines.append(f"• Department involved: <b>{top_dept.index[0]}</b>")
+    if "JURISDICTION" in stn_df.columns:
+        jur = stn_df["JURISDICTION"].dropna().unique()
+        if len(jur):
+            lines.append(f"• Jurisdiction: <b>{jur[0]}</b>")
+    return f"<b>Station {station}{suffix}:</b><br>" + "<br>".join(lines)
+
+
+HELP_TEXT = """I understand natural questions, typos included. Try things like:<br><br>
+<b>Rankings</b><br>
+• Which station has the highest FCOUNT?<br>
+• Top 5 stations in February<br>
+• Lowest station this month<br><br>
+<b>Comparisons</b><br>
+• Compare WADI and SUR<br>
+• Compare January and March<br><br>
+<b>Thresholds</b><br>
+• Stations with FCOUNT above 800<br>
+• Stations with fewer than 100 cases<br><br>
+<b>Breakdowns</b><br>
+• Department wise cases<br>
+• Which jurisdiction has the most cases?<br>
+• Error category breakdown<br><br>
+<b>Insights</b><br>
+• Give me insights / any anomalies?<br>
+• What's the trend this year?<br><br>
+<b>Specifics</b><br>
+• Tell me about station WADI<br>
+• Total FCOUNT in June<br>
+Just type naturally — spelling mistakes are fine."""
+
+
+# ==========================================================================
+# MAIN ENTRY POINT
+# ==========================================================================
 
 def ask_chatbot(question, df):
     if df is None or df.empty:
         return "No data available in the system."
 
-    q = question.lower().strip()
-    detected_month = detect_month(q)
+    q = question.strip()
+    if not q:
+        return "Please type a question — try 'help' to see examples."
 
+    months = detect_months(q)
     work_df = df.copy()
-    if detected_month and 'MONTH' in work_df.columns:
-        work_df = work_df[work_df['MONTH'] == detected_month]
+    if months and "MONTH" in work_df.columns:
+        work_df = work_df[work_df["MONTH"].isin(months)]
         if work_df.empty:
-            return f"No records found for the month of <b>{detected_month}</b>."
+            return f"No records found for {' & '.join(months)}."
 
-    # HELP
-    if fuzzy_contains(q, ["help", "what can you do", "commands", "examples", "how to ask"]):
-        return """I can answer questions even with spelling mistakes. Try these:<br><br>
-<b>Basic</b><br>
-• Total records / Total FCOUNT<br>
-• Top station / Highest station<br>
-• Top 5 stations<br>
-• Tell me about station WADI<br><br>
-<b>With month</b><br>
-• Which station has highest FCOUNT in January?<br>
-• Top 5 stations in February<br>
-• Total cases in March<br><br>
-Just type naturally — even if there are typos."""
+    intent, score = classify_intent(q)
 
-    # ========== TOP / HIGHEST / MORE CASES STATION (HIGH PRIORITY) ==========
-    top_keywords = [
-        "top station", "highest station", "station with highest", "which station has highest",
-        "which station has more", "which station has most", "station with most", "station with more",
-        "higest station", "hightest", "top sation", "highest sation", "most cases station",
-        "maximum station", "max station", "more cases", "has more cases", "stations has more",
-        "station has more", "which stations has more", "which station has", "stations with more"
-    ]
-    
-    is_top_station_query = (
-        fuzzy_contains(q, top_keywords) or
-        (fuzzy_contains(q, ["top", "highest", "most", "maximum", "max", "more"]) and 
-         fuzzy_contains(q, ["station", "sation", "statin", "stn", "stations"]))
-    )
+    # very short greeting-only messages
+    if intent == "greeting" and len(q.split()) <= 4:
+        return "Hello! 👋 I can answer questions about stations, FCOUNT, departments, jurisdictions, error categories and trends. Type 'help' for examples."
 
-    if is_top_station_query:
-        if 'STATION' in work_df.columns and 'FCOUNT' in work_df.columns:
-            top = work_df.groupby('STATION')['FCOUNT'].sum().sort_values(ascending=False)
-            if top.empty:
-                return "No station data available for this query."
-            station = top.index[0]
-            value = int(top.iloc[0])
-            month_text = f" in <b>{detected_month}</b>" if detected_month else ""
-            return f"The station with the highest FCOUNT{month_text} is <b>{station}</b> with <b>{value:,}</b> FCOUNT."
-        return "Station or FCOUNT data not available."
+    if intent == "help":
+        return HELP_TEXT
 
-    # TOP 5 STATIONS
-    if (fuzzy_contains(q, ["top 5", "top five", "top5"]) and fuzzy_contains(q, ["station", "sation", "statin"])) or \
-       (fuzzy_contains(q, ["top"]) and "5" in q and fuzzy_contains(q, ["station", "sation"])):
-        if 'STATION' in work_df.columns and 'FCOUNT' in work_df.columns:
-            top5 = work_df.groupby('STATION')['FCOUNT'].sum().sort_values(ascending=False).head(5)
-            if top5.empty:
-                return "No data available."
-            month_text = f" in <b>{detected_month}</b>" if detected_month else ""
-            result = f"<b>Top 5 Stations by FCOUNT{month_text}:</b><br><br>"
-            for i, (stn, val) in enumerate(top5.items(), 1):
-                result += f"{i}. <b>{stn}</b> → {int(val):,}<br>"
-            return result
-        return "Station data not available."
+    if intent == "insights":
+        return generate_insights(work_df)
 
-    # TOTAL RECORDS
-    if fuzzy_contains(q, ["total record", "how many record", "number of record", "total case", "total cases", "how many case"]):
-        return f"Total records{' in <b>' + detected_month + '</b>' if detected_month else ''}: <b>{len(work_df):,}</b>"
+    if intent == "compare":
+        stations = detect_stations(q, df)
+        if len(stations) >= 2:
+            return answer_compare_stations(df, stations, months)
+        if len(months) >= 2:
+            return answer_compare_months(df, months)
+        # fall through if we couldn't find two things to compare
+        intent = None
 
-    # TOTAL FCOUNT
-    if fuzzy_contains(q, ["total fcount", "overall fcount", "sum of fcount", "total fault", "total f count", "fcountt", "f cout"]):
-        total = work_df['FCOUNT'].sum() if 'FCOUNT' in work_df.columns else 0
-        return f"Total FCOUNT{' in <b>' + detected_month + '</b>' if detected_month else ''}: <b>{int(total):,}</b>"
+    if intent == "threshold":
+        direction, value = detect_threshold(q)
+        if direction and value is not None:
+            return answer_threshold(work_df, direction, value, months)
+        intent = None
 
-    # SPECIFIC STATION
-    if 'STATION' in df.columns:
-        stations = [str(s).strip() for s in df['STATION'].dropna().unique()]
-        best_station = None
-        best_score = 0.0
-        q_words = re.findall(r'\w+', q)
-        for stn in stations:
-            stn_lower = stn.lower()
-            if stn_lower in q or any(similarity(w, stn_lower) > 0.78 for w in q_words):
-                score = max((similarity(w, stn_lower) for w in q_words), default=0)
-                if score > best_score:
-                    best_score = score
-                    best_station = stn
-            if similarity(q, stn_lower) > 0.6 and similarity(q, stn_lower) > best_score:
-                best_score = similarity(q, stn_lower)
-                best_station = stn
+    if intent == "top_station":
+        top_n = detect_top_n(q, default=1)
+        return answer_top_station(work_df, months, top_n)
 
-        if best_station and best_score > 0.65:
-            stn_df = work_df[work_df['STATION'] == best_station]
-            if stn_df.empty:
-                return f"No records found for station <b>{best_station}</b>{' in <b>' + detected_month + '</b>' if detected_month else ''}."
-            total = int(stn_df['FCOUNT'].sum())
-            count = len(stn_df)
-            month_text = f" in <b>{detected_month}</b>" if detected_month else ""
-            return f"<b>Station {best_station}{month_text}:</b><br>• Total FCOUNT: <b>{total:,}</b><br>• Number of records: <b>{count:,}</b>"
+    if intent == "bottom_station":
+        top_n = detect_top_n(q, default=1)
+        return answer_bottom_station(work_df, months, top_n)
 
-    # DEPARTMENT
-    if fuzzy_contains(q, ["engineering", "engg", "engeniring", "engneering"]):
-        eng = work_df[work_df['DEPARTMENT'].str.contains("Engineering|ENGG", case=False, na=False)]
-        return f"Engineering Department has <b>{len(eng):,}</b> records{' in <b>' + detected_month + '</b>' if detected_month else ''}."
-    
-    if fuzzy_contains(q, ["optg", "operating", "oprating", "operation"]):
-        optg = work_df[work_df['DEPARTMENT'].str.contains("OPTG|Operating", case=False, na=False)]
-        return f"Operating (OPTG) Department has <b>{len(optg):,}</b> records{' in <b>' + detected_month + '</b>' if detected_month else ''}."
+    if intent == "average":
+        return answer_average(work_df, months)
 
-    # ERROR CATEGORY
-    if fuzzy_contains(q, ["track circuit", "trackcircuit", "tc failure"]):
-        tc = work_df[work_df['ERROR MAIN CATEGORY'].str.contains("Track Circuit", case=False, na=False)]
-        return f"Track Circuit Failure cases{' in <b>' + detected_month + '</b>' if detected_month else ''}: <b>{len(tc):,}</b>"
-    
-    if fuzzy_contains(q, ["emergency route", "emergencyroute", "route cancellation"]):
-        er = work_df[work_df['ERROR MAIN CATEGORY'].str.contains("Emergency Route", case=False, na=False)]
-        return f"Emergency Route Cancellation cases{' in <b>' + detected_month + '</b>' if detected_month else ''}: <b>{len(er):,}</b>"
+    if intent == "total_records":
+        suffix = _month_suffix(months)
+        return f"Total records{suffix}: <b>{len(work_df):,}</b>"
 
-    # JURISDICTION
-    if fuzzy_contains(q, ["jurisdiction", "jurisdction", "juris"]) and fuzzy_contains(q, ["highest", "top", "maximum", "most", "max"]):
-        if 'JURISDICTION' in work_df.columns:
-            top_jur = work_df['JURISDICTION'].value_counts()
-            if top_jur.empty:
-                return "No jurisdiction data available."
-            return f"The jurisdiction with highest cases{' in <b>' + detected_month + '</b>' if detected_month else ''} is <b>{top_jur.index[0]}</b> with <b>{top_jur.iloc[0]:,}</b> cases."
+    if intent == "total_fcount":
+        suffix = _month_suffix(months)
+        total = int(work_df["FCOUNT"].sum()) if "FCOUNT" in work_df.columns else 0
+        return f"Total FCOUNT{suffix}: <b>{total:,}</b>"
 
-    # FALLBACK
-    return ("Sorry, I could not fully understand the question.<br><br>"
-            "Try asking (spelling mistakes are okay):<br>"
-            "• Which station has highest FCOUNT in January?<br>"
-            "• Top 5 stations in February<br>"
-            "• Total FCOUNT<br>"
-            "• Tell me about station WADI<br>"
-            "• How many cases in Engineering?<br><br>"
-            "Type <b>help</b> for more examples.")
+    if intent == "department":
+        department = detect_department(q, df)
+        return answer_department(work_df, department, months)
+
+    if intent == "jurisdiction":
+        jurisdiction = detect_categorical(q, df, "JURISDICTION")
+        return answer_jurisdiction(work_df, jurisdiction, months)
+
+    if intent == "error_category":
+        category = detect_categorical(q, df, "ERROR MAIN CATEGORY")
+        return answer_error_category(work_df, category, months)
+
+    if intent == "fault_message":
+        return answer_fault_message(work_df, months)
+
+    if intent == "trend":
+        return answer_trend(work_df)
+
+    # ---- no strong intent match: try entity-only fallback (e.g. just a station name) ----
+    stations = detect_stations(q, df)
+    if stations:
+        return answer_station_detail(work_df, stations[0], months)
+
+    department = detect_department(q, df)
+    if department:
+        return answer_department(work_df, department, months)
+
+    jurisdiction = detect_categorical(q, df, "JURISDICTION", threshold=0.75)
+    if jurisdiction:
+        return answer_jurisdiction(work_df, jurisdiction, months)
+
+    # ---- true fallback ----
+    hint = ""
+    if months:
+        hint = f" I did notice you mentioned <b>{' & '.join(months)}</b> — try pairing that with a station, department, or 'top station'."
+    return ("Sorry, I couldn't quite understand that.<br><br>" + hint + "<br><br>"
+            "Try asking (typos are fine):<br>"
+            "• Which station has the highest FCOUNT?<br>"
+            "• Compare WADI and SUR<br>"
+            "• Stations with FCOUNT above 800<br>"
+            "• Give me insights<br>"
+            "• Tell me about station WADI<br><br>"
+            "Type <b>help</b> for the full list.")
 
 # ====================== SESSION STATE ======================
 if "logged_in" not in st.session_state:
