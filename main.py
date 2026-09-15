@@ -400,43 +400,6 @@ def get_jurisdiction(station, department):
     return SNT_ADSTE.get(stn, SNT_ADSTE.get(station, "Unclassified"))
 
 # ====================== IMPROVED AI CHATBOT ======================
-"""
-==========================================================================
- SMARTER DATA-LOGGER CHATBOT ENGINE
-==========================================================================
-Drop-in replacement for the "IMPROVED AI CHATBOT" section of your
-Streamlit app (everything between the `similarity()` function and the
-`SESSION STATE` section). Keeps the same call signature:
-
-    answer = ask_chatbot(user_question, df_original)
-
-WHY THIS IS BETTER THAN THE OLD VERSION
-----------------------------------------
-The old version was a long if/elif chain: each block only fired if the
-question matched one of a handful of hardcoded phrases, so anything
-phrased slightly differently ("which station is worst this year?",
-"compare WADI and SUR", "stations above 800 FCOUNT") fell straight into
-the generic fallback message.
-
-This version instead:
-  1. Extracts ENTITIES from the question first (station names, months,
-     departments, jurisdictions, error categories, numbers, comparison
-     targets) using fuzzy matching against the *actual values in your
-     data* — not a fixed keyword list.
-  2. Scores the question against a ranked list of INTENTS (top/bottom
-     station, totals, averages, breakdowns, comparisons, thresholds,
-     trends, insights) and picks the best match instead of "first rule
-     that fires wins".
-  3. Adds a genuinely new capability: PROACTIVE INSIGHTS — statistical
-     anomaly detection (stations far above the mean), month-over-month
-     spike detection, and "what's driving the numbers" summaries.
-  4. Falls back gracefully with a suggestion instead of just "I don't
-     understand", by naming the closest entity it *did* recognize.
-
-No external API, no extra secrets, no additional pip installs — it only
-uses `re`, `difflib` (already imported in your app) and `pandas`.
-==========================================================================
-"""
 
 import re
 from difflib import SequenceMatcher
