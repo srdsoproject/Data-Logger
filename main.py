@@ -824,19 +824,7 @@ else:
         if st.button("🗑️ Clear Chat", use_container_width=True):
             st.session_state.chat_history = []
             st.rerun()
-        st.markdown("---")
-        st.markdown("**🔧 Gemini Status**")
-        if st.button("🔍 Diagnose Gemini", use_container_width=True):
-            ok, msg = diagnose_gemini_setup()
-            if ok:
-                st.success(msg)
-            else:
-                st.error(msg)
-
-        if st.button("🗑️ Clear Gemini Cache", use_container_width=True):
-            clear_gemini_cache()
-            st.success("Gemini client cache cleared. Try asking a question again.")
-            st.rerun()
+       
     # ====================== LIVE FILTERS ======================
     st.markdown("### 🔍 Live Filters")
     col_f1 = st.columns([2, 2, 2, 2])
@@ -902,7 +890,19 @@ else:
         filtered_df = filtered_df[filtered_df['JURISDICTION'].isin(selected_jurisdictions)]
     if st.session_state.map_selected_station:
         filtered_df = filtered_df[filtered_df['STATION'] == st.session_state.map_selected_station]
-
+# ====================== APPLY FILTERS ======================
+    filtered_df = df_original.copy()
+    if 'DATE' in filtered_df.columns:
+        filtered_df = filtered_df[
+            (filtered_df['DATE'].dt.date >= from_date) &
+            (filtered_df['DATE'].dt.date <= to_date)
+        ]
+    if selected_stations:
+        filtered_df = filtered_df[filtered_df['STATION'].isin(selected_stations)]
+    if selected_errors and 'ERROR MAIN CATEGORY' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['ERROR MAIN CATEGORY'].isin(selected_errors)]
+    if selected_categories and 'DEPARTMENT' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['DEPART
     # ====================== PRE-COMPUTE SUMMARIES ======================
     cat_sum = pd.DataFrame()
     error_sum = pd.DataFrame()
