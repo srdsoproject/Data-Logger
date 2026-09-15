@@ -401,69 +401,116 @@ def get_jurisdiction(station, department):
 
 # ====================== IMPROVED AI CHATBOT ======================
 
-
 import json
 import re
 import signal
 import platform
- 
 import pandas as pd
 import streamlit as st
- 
+
 try:
     from google import genai
     from google.genai import types as genai_types
 except ImportError:
     genai = None
     genai_types = None
- 
-# Revisit this periodically -- see "MODEL NAME NOTE" above.
+
+# Revisit this periodically
 MODEL_NAME = "gemini-3.6-flash"
- 
- 
+
+
 # ==========================================================================
-# CLIENT (cached so we don't reconnect on every question)
+# CLIENT (only cache a successful client)
 # ==========================================================================
- 
+
+def _read_gemini_api_key():
+    """Try several common secret locations. Returns the key string or None."""
+    # Preferred structure used in this app
+    try:
+        key = st.secrets["gemini"]["api_key"]
+        if key and str(key).strip():
+            return str(key).strip()
+    except Exception:
+        pass
+
+    # Fallbacks people often use
+    for path in [
+        ("gemini", "API_KEY"),
+        ("GEMINI_API_KEY",),
+        ("GOOGLE_API_KEY",),
+        ("gemini_api_key",),
+    ]:
+        try:
+            if len(path) == 1:
+                key = st.secrets[path[0]]
+            else:
+                key = st.secrets[path[0]][path[1]]
+            if key and str(key).strip():
+                return str(key).strip()
+        except Exception:
+            continue
+    return None
+
+
 @st.cache_resource
 def get_gemini_client():
     if genai is None:
         return None
+    api_key = _read_gemini_api_key()
+    if not api_key:
+        return None
     try:
-        api_key = st.secrets["gemini"]["api_key"]
+        return genai.Client(api_key=api_key)
     except Exception:
         return None
-    return genai.Client(api_key=api_key)
- 
- 
+
+
+def clear_gemini_cache():
+    """Call this after fixing secrets so a previously-cached None is discarded."""
+    get_gemini_client.clear()
+
+
 def diagnose_gemini_setup():
     """Non-cached — always re-checks from scratch. Returns (ok: bool, message: str)."""
     if genai is None:
-        return False, "❌ `google-genai` did not import. Run `pip show google-genai` in the SAME terminal/venv you use to launch this Streamlit app."
-    try:
-        api_key = st.secrets["gemini"]["api_key"]
-    except Exception as e:
-        return False, f"❌ Could not read st.secrets['gemini']['api_key']: {e}"
-    if not api_key or not str(api_key).strip():
-        return False, "❌ api_key was found in secrets but it's empty."
+        return False, (
+            "❌ `google-genai` did not import. "
+            "Run `pip install google-genai` in the SAME terminal/venv you use to launch this Streamlit app."
+        )
+
+    api_key = _read_gemini_api_key()
+    if not api_key:
+        return False, (
+            "❌ Could not find the API key.\n\n"
+            "Add this exact block to `.streamlit/secrets.toml` (or Streamlit Cloud Secrets):\n\n"
+            "[gemini]\n"
+            'api_key = "AIzaSy..."\n\n'
+            "Then click the 'Clear Gemini Cache' button below and refresh."
+        )
+
     try:
         test_client = genai.Client(api_key=api_key)
-        resp = test_client.models.generate_content(model=MODEL_NAME, contents="Say OK")
-        return True, f"✅ Working! Gemini replied: {resp.text.strip()[:100]}"
+        resp = test_client.models.generate_content(
+            model=MODEL_NAME,
+            contents="Say OK"
+        )
+        return True, f"✅ Working! Gemini replied: {resp.text.strip()[:80]}"
     except Exception as e:
-        return False, f"❌ genai.Client()/generate_content raised: {type(e).__name__}: {e}"
+        return False, f"❌ genai.Client() / generate_content raised:\n{type(e).__name__}: {e}"
+
+
 # ==========================================================================
 # BUILD A COMPACT DESCRIPTION OF THE DATA FOR GEMINI
 # ==========================================================================
- 
+
 def build_data_context(df: pd.DataFrame) -> str:
     if df is None or df.empty:
         return "The dataframe `df` is currently empty."
- 
+
     lines = [f"The dataframe `df` has {len(df):,} rows. Columns and dtypes:"]
     for col in df.columns:
         lines.append(f"  - {col} ({df[col].dtype})")
- 
+
     lines.append("\nSample of distinct values for key categorical columns (to help you match user wording to real values):")
     for col in ["STATION", "DEPARTMENT", "ERROR MAIN CATEGORY", "JURISDICTION", "MONTH", "DL FAULT MESSAGE"]:
         if col in df.columns:
@@ -471,20 +518,20 @@ def build_data_context(df: pd.DataFrame) -> str:
             shown = uniques[:40]
             more = f" ...and {len(uniques) - 40} more" if len(uniques) > 40 else ""
             lines.append(f"  - {col}: {shown}{more}")
- 
+
     if "DATE" in df.columns and pd.api.types.is_datetime64_any_dtype(df["DATE"]):
         try:
             lines.append(f"\nDate range covered: {df['DATE'].min().date()} to {df['DATE'].max().date()}")
         except Exception:
             pass
- 
+
     return "\n".join(lines)
- 
- 
+
+
 SYSTEM_PROMPT_TEMPLATE = """You are a data analyst assistant embedded in a railway safety data-logger dashboard (Central Railway, Solapur Division). You answer questions about the dataframe `df` described below. FCOUNT means the fault/failure count for a record.
- 
+
 {data_context}
- 
+
 You must respond with ONLY a single JSON object (no markdown fences, no prose outside the JSON) with exactly these fields:
 {{
   "needs_code": true or false,
@@ -492,7 +539,7 @@ You must respond with ONLY a single JSON object (no markdown fences, no prose ou
   "explanation": "<one short sentence describing what you computed, or null if needs_code is false>",
   "answer_text": "<direct natural-language answer, or null if needs_code is true>"
 }}
- 
+
 Rules for pandas_code (only used when needs_code is true):
 - You may only use the variables `df` (already loaded) and `pd` (pandas).
 - Your code must assign the final answer to a variable named `result`. It can be a number, string, pandas Series, or small pandas DataFrame.
@@ -500,18 +547,18 @@ Rules for pandas_code (only used when needs_code is true):
 - Never mutate `df` itself — only read from it (copies/groupby/filtering are fine).
 - Keep it to a few lines. Prefer groupby/sum/mean/sort_values/head over loops.
 - If the question is ambiguous about a time period or station, make the most reasonable interpretation and mention your assumption in "explanation".
- 
+
 Rules for answer_text (only used when needs_code is false):
 - Use this for greetings, help requests, or questions that don't require computing over the data.
 - Keep it warm, concise, and specific to what this dashboard can do (stations, FCOUNT, departments, jurisdictions, error categories, trends, comparisons, anomalies).
- 
+
 Respond with the JSON object only."""
- 
- 
+
+
 # ==========================================================================
 # CODE SAFETY VALIDATION
 # ==========================================================================
- 
+
 FORBIDDEN_PATTERNS = [
     r"\bimport\b", r"\bopen\s*\(", r"\bexec\s*\(", r"\beval\s*\(", r"\bcompile\s*\(",
     r"\bos\.", r"\bsys\.", r"\bsubprocess\b", r"\brequests\b", r"\bsocket\b", r"\bshutil\b",
@@ -520,8 +567,8 @@ FORBIDDEN_PATTERNS = [
     r"\bto_csv\s*\(", r"\bto_excel\s*\(", r"\bto_pickle\s*\(", r"\bdf\s*=\s*", r"\bdf\.drop\s*\(.*inplace",
     r"\bdf\[.*\]\s*=", r"\blambda\b.*:.*(os|sys|open|import)",
 ]
- 
- 
+
+
 def validate_code(code: str) -> bool:
     if not code or not isinstance(code, str):
         return False
@@ -529,16 +576,16 @@ def validate_code(code: str) -> bool:
         if re.search(pattern, code, re.IGNORECASE):
             return False
     return True
- 
- 
+
+
 class _TimeoutError(Exception):
     pass
- 
- 
+
+
 def _timeout_handler(signum, frame):
     raise _TimeoutError()
- 
- 
+
+
 def safe_execute(code: str, df: pd.DataFrame, timeout_seconds: int = 5):
     """Run validated pandas code in a restricted namespace and return `result`."""
     safe_builtins = {
@@ -549,7 +596,7 @@ def safe_execute(code: str, df: pd.DataFrame, timeout_seconds: int = 5):
     }
     local_ns = {"df": df.copy(), "pd": pd, "result": None}
     global_ns = {"__builtins__": safe_builtins}
- 
+
     use_alarm = platform.system() != "Windows"
     if use_alarm:
         old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
@@ -560,48 +607,47 @@ def safe_execute(code: str, df: pd.DataFrame, timeout_seconds: int = 5):
         if use_alarm:
             signal.alarm(0)
             signal.signal(signal.SIGALRM, old_handler)
- 
+
     return local_ns.get("result")
- 
- 
+
+
 # ==========================================================================
 # RESULT FORMATTING
 # ==========================================================================
- 
+
 def format_result(result) -> str:
     if result is None:
         return "<i>(no result returned)</i>"
- 
+
     if isinstance(result, (int, float)):
         if isinstance(result, float) and not result.is_integer():
             return f"<b>{result:,.2f}</b>"
         return f"<b>{int(result):,}</b>"
- 
+
     if isinstance(result, str):
         return f"<b>{result}</b>"
- 
+
     if isinstance(result, pd.Series):
         items = list(result.items())[:20]
         lines = [f"• <b>{idx}</b>: {val:,.2f}" if isinstance(val, float) else f"• <b>{idx}</b>: {val:,}"
                  for idx, val in items]
         more = f"<br>...and {len(result) - 20} more." if len(result) > 20 else ""
         return "<br>".join(lines) + more
- 
+
     if isinstance(result, pd.DataFrame):
         small = result.head(20)
         try:
             return small.to_html(index=False, border=0, classes="chat-result-table")
         except Exception:
             return small.to_string(index=False)
- 
+
     return str(result)
- 
- 
+
+
 # ==========================================================================
-# LIGHTWEIGHT OFFLINE FALLBACK (only used if the API call itself fails,
-# e.g. free-tier rate limit hit, or no internet)
+# LIGHTWEIGHT OFFLINE FALLBACK
 # ==========================================================================
- 
+
 def basic_offline_fallback(question: str, df: pd.DataFrame) -> str:
     q = question.lower()
     if df is None or df.empty:
@@ -620,42 +666,39 @@ def basic_offline_fallback(question: str, df: pd.DataFrame) -> str:
                 f"Total records: <b>{len(df):,}</b>")
     return ("⚠️ The AI assistant is temporarily unavailable right now — this is usually a free-tier rate limit "
             "or a network issue. Please wait a few seconds and try again.")
- 
- 
+
+
 # ==========================================================================
 # MAIN ENTRY POINT
 # ==========================================================================
- 
+
 def ask_chatbot(question: str, df: pd.DataFrame, force_refresh_callback=None) -> str:
-    """
-    question: the user's typed question.
-    df: the current dataframe (already filtered/loaded as in your app).
-    force_refresh_callback: optional zero-arg function to call (e.g. clearing
-        st.cache_data + reloading from Google Sheets) if the user asks for
-        "latest"/"live"/"refresh" data before answering.
-    """
     if not question or not question.strip():
         return "Please type a question — try 'help' to see what I can do."
- 
+
     q_lower = question.lower()
     if force_refresh_callback and any(w in q_lower for w in ["latest data", "live data", "refresh data", "up to date"]):
         try:
             force_refresh_callback()
         except Exception:
             pass
- 
+
     client = get_gemini_client()
     if client is None:
-        return ("⚠️ The AI assistant isn't configured yet — add your free Gemini API key to "
-                "`st.secrets['gemini']['api_key']` (get one at aistudio.google.com) and install "
-                "the `google-genai` package. Meanwhile, here's a basic offline answer:<br><br>"
+        return ("⚠️ The AI assistant isn't configured yet.\n\n"
+                "1. Make sure `google-genai` is installed (`pip install google-genai`)\n"
+                "2. Add the key to secrets as:\n"
+                "   [gemini]\n"
+                '   api_key = "AIzaSy..."\n'
+                "3. Click the **Clear Gemini Cache** button in the sidebar, then try again.\n\n"
+                "Meanwhile, here's a basic offline answer:<br><br>"
                 + basic_offline_fallback(question, df))
- 
+
     data_context = build_data_context(df)
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(data_context=data_context)
- 
+
     parsed = None
-    for attempt in range(2):  # one retry, e.g. for transient 429s
+    for attempt in range(2):  # one retry for transient 429s
         try:
             response = client.models.generate_content(
                 model=MODEL_NAME,
@@ -673,23 +716,23 @@ def ask_chatbot(question: str, df: pd.DataFrame, force_refresh_callback=None) ->
         except Exception:
             parsed = None
             continue
- 
+
     if parsed is None:
         return basic_offline_fallback(question, df)
- 
+
     needs_code = parsed.get("needs_code", False)
- 
+
     if not needs_code:
         answer = parsed.get("answer_text") or "I'm not sure how to answer that — try rephrasing, or type 'help'."
         return answer
- 
+
     code = parsed.get("pandas_code")
     explanation = parsed.get("explanation") or ""
- 
+
     if not validate_code(code):
         return ("I generated a computation for that but it didn't pass a safety check, so I've skipped it. "
                 "Please try rephrasing the question more simply.")
- 
+
     try:
         result = safe_execute(code, df)
     except _TimeoutError:
@@ -697,7 +740,7 @@ def ask_chatbot(question: str, df: pd.DataFrame, force_refresh_callback=None) ->
     except Exception as e:
         return (f"I tried to compute that but hit an error ({type(e).__name__}). "
                 f"Could you rephrase the question? (e.g. name the exact column or station you mean)")
- 
+
     formatted = format_result(result)
     if explanation:
         return f"{explanation}<br><br>{formatted}"
@@ -823,7 +866,19 @@ else:
         if st.button("🗑️ Clear Chat", use_container_width=True):
             st.session_state.chat_history = []
             st.rerun()
+        st.markdown("---")
+        st.markdown("**🔧 Gemini Status**")
+        if st.button("🔍 Diagnose Gemini", use_container_width=True):
+            ok, msg = diagnose_gemini_setup()
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
 
+        if st.button("🗑️ Clear Gemini Cache", use_container_width=True):
+            clear_gemini_cache()
+            st.success("Gemini client cache cleared. Try asking a question again.")
+            st.rerun()
     # ====================== LIVE FILTERS ======================
     st.markdown("### 🔍 Live Filters")
     col_f1 = st.columns([2, 2, 2, 2])
