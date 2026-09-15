@@ -403,7 +403,7 @@ def get_jurisdiction(station, department):
 
 with st.sidebar:
     st.header("🔧 Controls")
-    if st.button("🔄 Refresh Data", type="primary", use_container_width=True):
+    if st.button("🔄 Refresh Data", type="primary", use_container_width=True, key="refresh_btn"):
         refresh_data()
 
     st.markdown("---")
@@ -415,7 +415,7 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    # Chat history display
+    # Chat history
     chat_html = '<div class="chat-container">'
     for chat in st.session_state.chat_history[-12:]:
         if chat["role"] == "user":
@@ -431,23 +431,22 @@ with st.sidebar:
     chat_html += '</div>'
     st.markdown(chat_html, unsafe_allow_html=True)
 
-    if st.button("🗑️ Clear Chat", use_container_width=True):
+    if st.button("🗑️ Clear Chat", use_container_width=True, key="clear_chat_btn"):
         st.session_state.chat_history = []
         st.rerun()
 
     st.markdown("---")
     st.markdown("**🔧 Gemini Status**")
-    if st.button("🔍 Diagnose Gemini", use_container_width=True):
+    if st.button("🔍 Diagnose Gemini", use_container_width=True, key="diagnose_btn"):
         client = get_gemini_client()
         if client:
             st.success("✅ Gemini client is ready")
         else:
             st.error("❌ Gemini client not available – check secrets")
-    if st.button("🗑️ Clear Gemini Cache", use_container_width=True):
+    if st.button("🗑️ Clear Gemini Cache", use_container_width=True, key="clear_gemini_btn"):
         clear_gemini_cache()
         st.success("Cache cleared")
-        st.rerun()
-# ====================== SESSION STATE ======================
+        st.rerun()# ====================== SESSION STATE ======================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "map_selected_station" not in st.session_state:
