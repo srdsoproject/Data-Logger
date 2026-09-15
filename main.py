@@ -537,17 +537,20 @@ You must respond with ONLY a single JSON object (no markdown fences, no prose ou
   "answer_text": "<direct natural-language answer, or null if needs_code is true>"
 }}
 
-Rules for pandas_code (only used when needs_code is true):
-- You may only use the variables `df` (already loaded) and `pd` (pandas).
-- Your code must assign the final answer to a variable named `result`. It can be a number, string, pandas Series, or small pandas DataFrame.
-- Never use import, open, exec, eval, os, sys, subprocess, network calls, or attempt to write/modify files.
-- Never mutate `df` itself — only read from it (copies/groupby/filtering are fine).
-- Keep it to a few lines. Prefer groupby/sum/mean/sort_values/head over loops.
-- If the question is ambiguous about a time period or station, make the most reasonable interpretation and mention your assumption in "explanation".
+Rules for pandas_code (ONLY when needs_code is true):
+- You may ONLY use the variables `df` and `pd`.
+- Your code MUST assign the final answer to a variable named `result`.
+- NEVER use import, open, exec, eval, os, sys, subprocess, network calls, or write files.
+- NEVER mutate `df` (no inplace=True, no df[...] = ...).
+- Keep the code extremely short (prefer groupby / sum / nlargest / value_counts).
+- ALWAYS handle possible NaNs: use .dropna() or .fillna(0) when needed.
+- NEVER compare a datetime column with a plain string. Convert with .dt.date or use .dt.to_period if required.
+- Use ONLY column names that appear in the data context above. If a user mentions a station or department that does not exist, still produce valid code that returns an empty result or a clear message.
+- If the question is ambiguous, make the most reasonable assumption and state it in "explanation".
 
-Rules for answer_text (only used when needs_code is false):
-- Use this for greetings, help requests, or questions that don't require computing over the data.
-- Keep it warm, concise, and specific to what this dashboard can do (stations, FCOUNT, departments, jurisdictions, error categories, trends, comparisons, anomalies).
+Rules for answer_text (when needs_code is false):
+- Use for greetings, help, or questions that need no computation.
+- Keep it warm and specific to this dashboard.
 
 Respond with the JSON object only."""
 
@@ -670,6 +673,12 @@ def basic_offline_fallback(question: str, df: pd.DataFrame) -> str:
 # ==========================================================================
 
 def ask_chatbot(question: str, df: pd.DataFrame, force_refresh_callback=None) -> str:
+    """
+    Robust version that:
+    - Retries once with a stricter prompt if the first generated code fails
+    - Shows a helpful message instead of a raw ValueError
+    - Never crashes the Streamlit app
+    """
     if not question or not question.strip():
         return "Please type a question — try 'help' to see what I can do."
 
@@ -683,36 +692,40 @@ def ask_chatbot(question: str, df: pd.DataFrame, force_refresh_callback=None) ->
     client = get_gemini_client()
     if client is None:
         return ("⚠️ The AI assistant isn't configured yet.\n\n"
-                "1. Make sure `google-genai` is installed (`pip install google-genai`)\n"
-                "2. Add the key to secrets as:\n"
+                "1. Make sure `google-genai` is installed\n"
+                "2. Add the key in Streamlit Cloud Secrets as:\n"
                 "   [gemini]\n"
                 '   api_key = "AIzaSy..."\n'
-                "3. Click the **Clear Gemini Cache** button in the sidebar, then try again.\n\n"
-                "Meanwhile, here's a basic offline answer:<br><br>"
+                "3. Click **Clear Gemini Cache** then try again.\n\n"
                 + basic_offline_fallback(question, df))
 
     data_context = build_data_context(df)
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(data_context=data_context)
 
-    parsed = None
-    for attempt in range(2):  # one retry for transient 429s
+    # ---------- helper that calls Gemini ----------
+    def _call_gemini(extra_instruction: str = "") -> dict | None:
+        full_prompt = question
+        if extra_instruction:
+            full_prompt = f"{question}\n\nIMPORTANT EXTRA INSTRUCTION: {extra_instruction}"
+
         try:
             response = client.models.generate_content(
                 model=MODEL_NAME,
-                contents=question,
+                contents=full_prompt,
                 config=genai_types.GenerateContentConfig(
                     system_instruction=system_prompt,
                     temperature=0,
                     response_mime_type="application/json",
                 ),
             )
-            raw_text = response.text.strip()
-            raw_text = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_text.strip())
-            parsed = json.loads(raw_text)
-            break
+            raw = response.text.strip()
+            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw)
+            return json.loads(raw)
         except Exception:
-            parsed = None
-            continue
+            return None
+
+    # ---------- first attempt ----------
+    parsed = _call_gemini()
 
     if parsed is None:
         return basic_offline_fallback(question, df)
@@ -720,29 +733,61 @@ def ask_chatbot(question: str, df: pd.DataFrame, force_refresh_callback=None) ->
     needs_code = parsed.get("needs_code", False)
 
     if not needs_code:
-        answer = parsed.get("answer_text") or "I'm not sure how to answer that — try rephrasing, or type 'help'."
-        return answer
+        return parsed.get("answer_text") or "I'm not sure how to answer that — try rephrasing or type 'help'."
 
     code = parsed.get("pandas_code")
     explanation = parsed.get("explanation") or ""
 
     if not validate_code(code):
-        return ("I generated a computation for that but it didn't pass a safety check, so I've skipped it. "
-                "Please try rephrasing the question more simply.")
+        return ("I generated a computation but it didn't pass the safety check. "
+                "Please try a simpler question.")
 
-    try:
-        result = safe_execute(code, df)
-    except _TimeoutError:
-        return "That computation took too long to run — please try a narrower question (e.g. add a month or station filter)."
-    except Exception as e:
-        return (f"I tried to compute that but hit an error ({type(e).__name__}). "
-                f"Could you rephrase the question? (e.g. name the exact column or station you mean)")
+    # ---------- execute with retry ----------
+    def _try_execute(code_str: str):
+        try:
+            return safe_execute(code_str, df), None
+        except Exception as e:
+            return None, f"{type(e).__name__}: {str(e)[:300]}"
+
+    result, err = _try_execute(code)
+
+    # If it failed → one automatic retry with a much stricter instruction
+    if err is not None:
+        retry_instruction = (
+            "The previous pandas code you generated raised this error:\n"
+            f"{err}\n\n"
+            "Please generate a NEW, simpler and more defensive pandas code that:\n"
+            "- Uses ONLY columns that really exist (see the data context)\n"
+            "- Handles NaNs safely (use .dropna() or .fillna(0) where needed)\n"
+            "- Never does operations that can raise ValueError (e.g. compare Timestamp with string)\n"
+            "- Keeps the code very short and uses groupby / sum / nlargest etc.\n"
+            "Return the same JSON format."
+        )
+        parsed2 = _call_gemini(retry_instruction)
+        if parsed2 and parsed2.get("needs_code") and parsed2.get("pandas_code"):
+            code2 = parsed2["pandas_code"]
+            if validate_code(code2):
+                result, err = _try_execute(code2)
+                if err is None:
+                    explanation = parsed2.get("explanation") or explanation
+                    code = code2   # for possible future logging
+
+    if err is not None:
+        # Final friendly message – never show raw traceback to the user
+        return (
+            "I tried to answer that but the calculation hit a data issue "
+            f"({err.split(':')[0]}). "
+            "This usually happens when a column has mixed types or missing values. "
+            "Try rephrasing more simply, for example:\n"
+            "• “Top 5 stations by FCOUNT”\n"
+            "• “Total FCOUNT for SUR station”\n"
+            "• “How many records in Engineering department?”"
+        )
 
     formatted = format_result(result)
     if explanation:
         return f"{explanation}<br><br>{formatted}"
     return formatted
- 
 # ====================== SESSION STATE ======================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
