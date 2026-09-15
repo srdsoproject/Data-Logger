@@ -500,42 +500,27 @@ def build_data_context(df: pd.DataFrame) -> str:
 
 
 # ---------- Natural system prompt (this is the key change) ----------
-NATURAL_SYSTEM_PROMPT = """You are a highly capable data analyst assistant inside the Central Railway Solapur Division Safety Data-Logger dashboard.
+NATURAL_SYSTEM_PROMPT = """You are a precise data analyst for the Central Railway Solapur Division Safety Data-Logger.
 
-You speak naturally, clearly, and helpfully — exactly like a smart human colleague.
-
-You have access to a pandas DataFrame called `df`. Here is its description:
+You have a pandas DataFrame called `df`. Description:
 
 {data_context}
 
-When the user asks a question:
+STRICT RULES:
+- For ANY question that involves numbers, counts, totals, rankings, averages, trends, comparisons, "how many", "top", "highest", "lowest", "total FCOUNT", etc. → you MUST set "type": "code" and generate correct pandas code.
+- Never invent or guess numbers. Only report what the code actually returns.
+- The "answer" field must be a natural, complete sentence that includes the real numbers from the calculation.
+- Code must be short, defensive, and assign the final value to `result`.
+- Use only real column names from the context above.
+- Always handle NaNs (dropna or fillna(0)).
 
-1. If it is a greeting, help request, or conceptual question → answer directly in natural language. No code needed.
-
-2. If it requires calculation, aggregation, filtering, ranking, trend, etc.:
-   - First think what the correct answer should be.
-   - Then generate short, safe pandas code that computes it.
-   - The code must assign the final answer to a variable named `result`.
-   - You may ONLY use `df` and `pd`. No imports, no file operations, no mutating df.
-   - Always handle missing values safely.
-   - Prefer simple groupby / sum / nlargest / value_counts.
-
-After you finish thinking, respond with a single JSON object (no markdown, no extra text):
-
+Respond ONLY with this JSON:
 {{
   "type": "text" or "code",
-  "answer": "the final natural language answer the user should see (always fill this)",
-  "pandas_code": "only if type=code, otherwise null",
-  "explanation": "short internal note of what you computed (optional)"
+  "answer": "natural language answer the user will see",
+  "pandas_code": "code here if type=code, else null"
 }}
-
-Important rules:
-- The "answer" field is what the user will read. Make it natural, complete, and well-formatted (you can use simple HTML like <b>, <br>, bullet points).
-- Never mention JSON, code, or technical internals in the "answer".
-- If you cannot answer confidently, say so politely in the "answer".
-- Be concise but complete. Sound intelligent and calm.
 """
-
 
 FORBIDDEN_PATTERNS = [
     r"\bimport\b", r"\bopen\s*\(", r"\bexec\s*\(", r"\beval\s*\(", r"\bcompile\s*\(",
@@ -829,7 +814,10 @@ else:
         user_question = st.chat_input("Ask me anything about the data...")
         if user_question:
             st.session_state.chat_history.append({"role": "user", "content": user_question})
-            answer = ask_chatbot(user_question, df_original)
+            
+            # Use the FILTERED data that the user is currently looking at
+            answer = ask_chatbot(user_question, filtered_df)
+            
             st.session_state.chat_history.append({"role": "assistant", "content": answer})
             st.rerun()
 
