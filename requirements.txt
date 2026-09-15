@@ -16,3 +16,4 @@ streamlit-folium==0.22.0
 # Optional but safe
 matplotlib==3.9.2
 openrouteservice
+anthropic
