@@ -401,306 +401,52 @@ def get_jurisdiction(station, department):
 
 # ====================== IMPROVED AI CHATBOT ======================
 
-import json
-import re
-import signal
-import platform
-import pandas as pd
-import streamlit as st
+with st.sidebar:
+    st.header("🔧 Controls")
+    if st.button("🔄 Refresh Data", type="primary", use_container_width=True):
+        refresh_data()
 
-try:
-    from google import genai
-    from google.genai import types as genai_types
-except ImportError:
-    genai = None
-    genai_types = None
+    st.markdown("---")
 
-# Revisit this periodically
-# ====================== NATURAL AI CHATBOT (Grok-style) ======================
+    st.markdown("""
+    <div class="chatbot-header">
+        🤖 AI Chatbot
+        <span>Spelling tolerant</span>
+    </div>
+    """, unsafe_allow_html=True)
 
-import json
-import re
-import signal
-import platform
-from typing import Optional
-
-try:
-    from google import genai
-    from google.genai import types as genai_types
-except ImportError:
-    genai = None
-    genai_types = None
-
-MODEL_NAME = "gemini-3.6-flash"   # or "gemini-3.8-flash" if you prefer the newest
-
-
-def _read_gemini_api_key():
-    try:
-        key = st.secrets["gemini"]["api_key"]
-        if key and str(key).strip():
-            return str(key).strip()
-    except Exception:
-        pass
-    for path in [("gemini", "API_KEY"), ("GEMINI_API_KEY",), ("GOOGLE_API_KEY",)]:
-        try:
-            key = st.secrets[path[0]] if len(path) == 1 else st.secrets[path[0]][path[1]]
-            if key and str(key).strip():
-                return str(key).strip()
-        except Exception:
-            continue
-    return None
-
-
-@st.cache_resource
-def get_gemini_client():
-    if genai is None:
-        return None
-    api_key = _read_gemini_api_key()
-    if not api_key:
-        return None
-    try:
-        return genai.Client(api_key=api_key)
-    except Exception:
-        return None
-
-
-def clear_gemini_cache():
-    get_gemini_client.clear()
-
-
-def build_data_context(df: pd.DataFrame) -> str:
-    if df is None or df.empty:
-        return "The dataframe is currently empty."
-
-    lines = [f"Dataframe has {len(df):,} rows. Columns:"]
-    for col in df.columns:
-        lines.append(f"  • {col} ({df[col].dtype})")
-
-    lines.append("\nKey categorical values (sample):")
-    for col in ["STATION", "DEPARTMENT", "ERROR MAIN CATEGORY", "JURISDICTION", "MONTH"]:
-        if col in df.columns:
-            uniques = df[col].dropna().astype(str).unique().tolist()
-            shown = uniques[:25]
-            more = f" ... +{len(uniques)-25} more" if len(uniques) > 25 else ""
-            lines.append(f"  • {col}: {shown}{more}")
-
-    if "DATE" in df.columns and pd.api.types.is_datetime64_any_dtype(df["DATE"]):
-        try:
-            lines.append(f"\nDate range: {df['DATE'].min().date()} → {df['DATE'].max().date()}")
-        except Exception:
-            pass
-
-    if "FCOUNT" in df.columns:
-        try:
-            lines.append(f"Total FCOUNT in current data: {int(df['FCOUNT'].sum()):,}")
-        except Exception:
-            pass
-
-    return "\n".join(lines)
-
-
-# ---------- Natural system prompt (this is the key change) ----------
-NATURAL_SYSTEM_PROMPT = """You are a precise data analyst for the Central Railway Solapur Division Safety Data-Logger.
-
-You have a pandas DataFrame called `df`. Description:
-
-{data_context}
-
-STRICT RULES:
-- For ANY question that involves numbers, counts, totals, rankings, averages, trends, comparisons, "how many", "top", "highest", "lowest", "total FCOUNT", etc. → you MUST set "type": "code" and generate correct pandas code.
-- Never invent or guess numbers. Only report what the code actually returns.
-- The "answer" field must be a natural, complete sentence that includes the real numbers from the calculation.
-- Code must be short, defensive, and assign the final value to `result`.
-- Use only real column names from the context above.
-- Always handle NaNs (dropna or fillna(0)).
-
-Respond ONLY with this JSON:
-{{
-  "type": "text" or "code",
-  "answer": "natural language answer the user will see",
-  "pandas_code": "code here if type=code, else null"
-}}
-"""
-
-FORBIDDEN_PATTERNS = [
-    r"\bimport\b", r"\bopen\s*\(", r"\bexec\s*\(", r"\beval\s*\(", r"\bcompile\s*\(",
-    r"\bos\.", r"\bsys\.", r"\bsubprocess\b", r"\brequests\b", r"\bsocket\b",
-    r"__\w+__", r"\bglobals\s*\(", r"\blocals\s*\(", r"\bgetattr\s*\(", r"\bsetattr\s*\(",
-    r"\bdelattr\s*\(", r"\binput\s*\(", r"\.system\s*\(", r"\bread_csv\s*\(", r"\bread_excel\s*\(",
-    r"\bto_csv\s*\(", r"\bto_excel\s*\(", r"\bdf\s*=\s*", r"\bdf\.drop\s*\(.*inplace",
-    r"\bdf\[.*\]\s*=",
-]
-
-
-def validate_code(code: str) -> bool:
-    if not code or not isinstance(code, str):
-        return False
-    for p in FORBIDDEN_PATTERNS:
-        if re.search(p, code, re.IGNORECASE):
-            return False
-    return True
-
-
-class _TimeoutError(Exception):
-    pass
-
-
-def _timeout_handler(signum, frame):
-    raise _TimeoutError()
-
-
-def safe_execute(code: str, df: pd.DataFrame, timeout_seconds: int = 6):
-    safe_builtins = {
-        "len": len, "int": int, "float": float, "str": str, "round": round,
-        "sorted": sorted, "list": list, "dict": dict, "set": set, "sum": sum,
-        "min": min, "max": max, "abs": abs, "range": range, "enumerate": enumerate,
-        "zip": zip, "bool": bool, "isinstance": isinstance, "type": type,
-    }
-    local_ns = {"df": df.copy(), "pd": pd, "result": None}
-    global_ns = {"__builtins__": safe_builtins}
-
-    use_alarm = platform.system() != "Windows"
-    if use_alarm:
-        old = signal.signal(signal.SIGALRM, _timeout_handler)
-        signal.alarm(timeout_seconds)
-    try:
-        exec(code, global_ns, local_ns)
-    finally:
-        if use_alarm:
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, old)
-
-    return local_ns.get("result")
-
-
-def format_result(result) -> str:
-    if result is None:
-        return "No result."
-    if isinstance(result, (int, float)):
-        if isinstance(result, float) and not result.is_integer():
-            return f"<b>{result:,.2f}</b>"
-        return f"<b>{int(result):,}</b>"
-    if isinstance(result, str):
-        return result
-    if isinstance(result, pd.Series):
-        items = list(result.items())[:15]
-        lines = []
-        for idx, val in items:
-            if isinstance(val, float):
-                lines.append(f"• <b>{idx}</b>: {val:,.2f}")
-            else:
-                lines.append(f"• <b>{idx}</b>: {val:,}")
-        more = f"<br>...and {len(result)-15} more" if len(result) > 15 else ""
-        return "<br>".join(lines) + more
-    if isinstance(result, pd.DataFrame):
-        try:
-            return result.head(12).to_html(index=False, border=0, classes="chat-result-table")
-        except Exception:
-            return result.head(12).to_string(index=False)
-    return str(result)
-
-
-def basic_offline_fallback(question: str, df: pd.DataFrame) -> str:
-    q = question.lower()
-    if df is None or df.empty:
-        return "I don't have data loaded right now."
-    if any(w in q for w in ["top", "highest", "most"]) and "STATION" in df.columns and "FCOUNT" in df.columns:
-        totals = df.groupby("STATION")["FCOUNT"].sum().sort_values(ascending=False)
-        if not totals.empty:
-            return f"The station with the highest FCOUNT is <b>{totals.index[0]}</b> with <b>{int(totals.iloc[0]):,}</b>."
-    if "total" in q and "fcount" in q and "FCOUNT" in df.columns:
-        return f"Total FCOUNT right now is <b>{int(df['FCOUNT'].sum()):,}</b>."
-    if "total" in q and ("record" in q or "case" in q or "row" in q):
-        return f"There are currently <b>{len(df):,}</b> records."
-    return "I'm temporarily unable to reach the AI model. Please try again in a few seconds."
-
-
-def ask_chatbot(question: str, df: pd.DataFrame, force_refresh_callback=None) -> str:
-    if not question or not question.strip():
-        return "Ask me anything about the data — stations, FCOUNT, departments, trends, comparisons..."
-
-    if force_refresh_callback and any(w in question.lower() for w in ["latest data", "live data", "refresh data", "up to date"]):
-        try:
-            force_refresh_callback()
-        except Exception:
-            pass
-
-    client = get_gemini_client()
-    if client is None:
-        return ("The AI is not configured yet.<br><br>"
-                "Please add this in Streamlit Cloud → Settings → Secrets:<br><br>"
-                "<code>[gemini]<br>api_key = \"AIzaSy...\"</code><br><br>"
-                "Then click <b>Clear Gemini Cache</b> and try again.<br><br>"
-                + basic_offline_fallback(question, df))
-
-    data_context = build_data_context(df)
-    system_prompt = NATURAL_SYSTEM_PROMPT.format(data_context=data_context)
-
-    def call_gemini(extra: str = "") -> Optional[dict]:
-        prompt = question if not extra else f"{question}\n\nAdditional instruction: {extra}"
-        try:
-            resp = client.models.generate_content(
-                model=MODEL_NAME,
-                contents=prompt,
-                config=genai_types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    temperature=0.2,
-                    response_mime_type="application/json",
-                ),
-            )
-            raw = resp.text.strip()
-            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw)
-            return json.loads(raw)
-        except Exception:
-            return None
-
-    # First attempt
-    parsed = call_gemini()
-    if parsed is None:
-        return basic_offline_fallback(question, df)
-
-    answer = parsed.get("answer") or "I couldn't generate a proper answer. Please try rephrasing."
-
-    if parsed.get("type") != "code" or not parsed.get("pandas_code"):
-        return answer
-
-    code = parsed["pandas_code"]
-    if not validate_code(code):
-        return answer + "<br><br><i>(I decided not to run a calculation for safety reasons.)</i>"
-
-    # Try to execute
-    try:
-        result = safe_execute(code, df)
-        formatted = format_result(result)
-        # Combine the natural answer with the computed result
-        if "result" in answer.lower() or "is" in answer.lower()[:40]:
-            return f"{answer}<br><br>{formatted}"
+    # Chat history display
+    chat_html = '<div class="chat-container">'
+    for chat in st.session_state.chat_history[-12:]:
+        if chat["role"] == "user":
+            chat_html += f'''
+            <div class="chat-message user-msg">
+                <span class="chat-avatar">👤</span>{chat["content"]}
+            </div>'''
         else:
-            return f"{answer}<br><br><b>Result:</b><br>{formatted}"
-    except Exception as e:
-        # Automatic retry with stricter instruction
-        err_msg = f"{type(e).__name__}: {str(e)[:250]}"
-        retry_extra = (
-            f"The code you previously generated failed with this error: {err_msg}. "
-            "Please generate a simpler, more defensive pandas code that avoids this error. "
-            "Still return the same JSON format. Make the final 'answer' field complete and natural."
-        )
-        parsed2 = call_gemini(retry_extra)
-        if parsed2 and parsed2.get("pandas_code") and validate_code(parsed2["pandas_code"]):
-            try:
-                result = safe_execute(parsed2["pandas_code"], df)
-                formatted = format_result(result)
-                final_answer = parsed2.get("answer") or answer
-                return f"{final_answer}<br><br>{formatted}"
-            except Exception:
-                pass
+            chat_html += f'''
+            <div class="chat-message bot-msg">
+                <span class="chat-avatar">🤖</span>{chat["content"]}
+            </div>'''
+    chat_html += '</div>'
+    st.markdown(chat_html, unsafe_allow_html=True)
 
-        # Final fallback – still give a useful natural answer
-        return (
-            f"{answer}<br><br>"
-            "<i>I tried to compute the exact numbers but ran into a data issue. "
-            "You can try a simpler version of the question (e.g. “top 5 stations by FCOUNT”).</i>"
-        )
+    if st.button("🗑️ Clear Chat", use_container_width=True):
+        st.session_state.chat_history = []
+        st.rerun()
+
+    st.markdown("---")
+    st.markdown("**🔧 Gemini Status**")
+    if st.button("🔍 Diagnose Gemini", use_container_width=True):
+        client = get_gemini_client()
+        if client:
+            st.success("✅ Gemini client is ready")
+        else:
+            st.error("❌ Gemini client not available – check secrets")
+    if st.button("🗑️ Clear Gemini Cache", use_container_width=True):
+        clear_gemini_cache()
+        st.success("Cache cleared")
+        st.rerun()
 # ====================== SESSION STATE ======================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
