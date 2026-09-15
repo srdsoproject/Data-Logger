@@ -289,15 +289,34 @@ SNT_ADSTE = {
 def get_jurisdiction(station, department):
     if pd.isna(station) or str(station).strip() == "":
         return "Unclassified"
+    
     stn = str(station).strip().upper().replace(" ", "")
     
+    # Normalise common variants
     if stn in ["HGSTN", "HGA", "HG-A"]:
         stn = "HG"
     if stn == "AGDL":
         stn = "AGDl"
+    
     dept = str(department).strip().upper() if pd.notna(department) else ""
+
+    # 1. Operating
     if "OPTG" in dept or "OPERATING" in dept:
         return OPERATING_TI.get(stn, OPERATING_TI.get(station, "Unclassified"))
+    
+    # 2. Engineering
+    if "ENGG" in dept or "ENGINEERING" in dept or "ADEN" in dept:
+        return ENGG_ADEN.get(stn, ENGG_ADEN.get(station, "Unclassified"))
+    
+    # 3. Electrical (G)
+    if "ELECT" in dept and "TRD" not in dept:
+        return ELECT_G_SSE.get(stn, ELECT_G_SSE.get(station, "Unclassified"))
+    
+    # 4. Electrical (TRD)
+    if "TRD" in dept or "TRACTION" in dept:
+        return ELECT_TRD_SSE.get(stn, ELECT_TRD_SSE.get(station, "Unclassified"))
+    
+    # 5. Default → S&T (for S&T, Failure, Route Stuckup, Attended Only, etc.)
     return SNT_ADSTE.get(stn, SNT_ADSTE.get(station, "Unclassified"))
 
 # ====================== HELPER: SYSTEMATIC SORT ======================
