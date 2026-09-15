@@ -902,7 +902,8 @@ else:
     if selected_errors and 'ERROR MAIN CATEGORY' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['ERROR MAIN CATEGORY'].isin(selected_errors)]
     if selected_categories and 'DEPARTMENT' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['DEPART
+        filtered_df = filtered_df[filtered_df['DEPARTMENT'].isin(selected_categories)]
+        
     # ====================== PRE-COMPUTE SUMMARIES ======================
     cat_sum = pd.DataFrame()
     error_sum = pd.DataFrame()
