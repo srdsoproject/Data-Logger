@@ -425,7 +425,6 @@ MODEL_NAME = "gemini-3.6-flash"
 
 def _read_gemini_api_key():
     """Try several common secret locations. Returns the key string or None."""
-    # Preferred structure used in this app
     try:
         key = st.secrets["gemini"]["api_key"]
         if key and str(key).strip():
@@ -433,7 +432,7 @@ def _read_gemini_api_key():
     except Exception:
         pass
 
-    # Fallbacks people often use
+    # Fallbacks
     for path in [
         ("gemini", "API_KEY"),
         ("GEMINI_API_KEY",),
@@ -466,9 +465,7 @@ def get_gemini_client():
 
 
 def clear_gemini_cache():
-    """Call this after fixing secrets so a previously-cached None is discarded."""
     get_gemini_client.clear()
-
 
 def diagnose_gemini_setup():
     """Non-cached — always re-checks from scratch. Returns (ok: bool, message: str)."""
