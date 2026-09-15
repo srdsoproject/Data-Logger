@@ -576,20 +576,71 @@ def basic_offline_fallback(question: str, df: pd.DataFrame) -> str:
 def ask_chatbot(question: str, df: pd.DataFrame, force_refresh_callback=None) -> str:
     if not question or not question.strip():
         return "Ask me anything about the data — stations, FCOUNT, departments, trends, comparisons..."
-    if force_refresh_callback and any(w in question.lower() for w in ["latest data", "live data", "refresh data", "up to date"]):
+
+    q = question.lower().strip()
+
+    # -------------------------------------------------
+    # HARD-CODED RELIABLE ANSWERS for the most common questions
+    # This guarantees correct results even if Gemini fails
+    # -------------------------------------------------
+    if df is not None and not df.empty and "FCOUNT" in df.columns and "STATION" in df.columns:
+
+        # Top stations by FCOUNT
+        if any(phrase in q for phrase in ["top 5 station", "top five station", "top stations", "highest fcount", "most fcount", "top 5 by fcount"]):
+            try:
+                top = df.groupby("STATION")["FCOUNT"].sum().sort_values(ascending=False).head(5)
+                lines = [f"{i+1}. <b>{stn}</b> → <b>{int(val):,}</b>" for i, (stn, val) in enumerate(top.items())]
+                return "Top 5 stations by total FCOUNT:<br><br>" + "<br>".join(lines)
+            except Exception:
+                pass
+
+        # Top 10 stations
+        if "top 10" in q and "station" in q:
+            try:
+                top = df.groupby("STATION")["FCOUNT"].sum().sort_values(ascending=False).head(10)
+                lines = [f"{i+1}. <b>{stn}</b> → <b>{int(val):,}</b>" for i, (stn, val) in enumerate(top.items())]
+                return "Top 10 stations by total FCOUNT:<br><br>" + "<br>".join(lines)
+            except Exception:
+                pass
+
+        # Total FCOUNT
+        if any(phrase in q for phrase in ["total fcount", "overall fcount", "sum of fcount", "total fault"]):
+            try:
+                total = int(df["FCOUNT"].sum())
+                return f"Total FCOUNT in the current data is <b>{total:,}</b>."
+            except Exception:
+                pass
+
+        # Total records
+        if any(phrase in q for phrase in ["total record", "how many record", "number of record", "total case", "how many case"]):
+            return f"There are currently <b>{len(df):,}</b> records."
+
+        # Station specific
+        for stn in df["STATION"].dropna().unique():
+            stn_lower = str(stn).lower()
+            if stn_lower in q and ("fcount" in q or "fault" in q):
+                try:
+                    val = int(df[df["STATION"] == stn]["FCOUNT"].sum())
+                    return f"Total FCOUNT for station <b>{stn}</b> is <b>{val:,}</b>."
+                except Exception:
+                    pass
+
+    # -------------------------------------------------
+    # If we reach here → try Gemini
+    # -------------------------------------------------
+    if force_refresh_callback and any(w in q for w in ["latest data", "live data", "refresh data", "up to date"]):
         try:
             force_refresh_callback()
         except Exception:
             pass
+
     client = get_gemini_client()
     if client is None:
-        return ("The AI is not configured yet.<br><br>"
-                "Please add this in Streamlit Cloud → Settings → Secrets:<br><br>"
-                "<code>[gemini]<br>api_key = \"AIzaSy...\"</code><br><br>"
-                "Then click <b>Clear Gemini Cache</b> and try again.<br><br>"
-                + basic_offline_fallback(question, df))
+        return basic_offline_fallback(question, df)
+
     data_context = build_data_context(df)
     system_prompt = NATURAL_SYSTEM_PROMPT.format(data_context=data_context)
+
     def call_gemini(extra: str = "") -> Optional[dict]:
         prompt = question if not extra else f"{question}\n\nAdditional instruction: {extra}"
         try:
@@ -598,7 +649,7 @@ def ask_chatbot(question: str, df: pd.DataFrame, force_refresh_callback=None) ->
                 contents=prompt,
                 config=genai_types.GenerateContentConfig(
                     system_instruction=system_prompt,
-                    temperature=0.2,
+                    temperature=0.1,
                     response_mime_type="application/json",
                 ),
             )
@@ -607,45 +658,27 @@ def ask_chatbot(question: str, df: pd.DataFrame, force_refresh_callback=None) ->
             return json.loads(raw)
         except Exception:
             return None
+
     parsed = call_gemini()
     if parsed is None:
         return basic_offline_fallback(question, df)
-    answer = parsed.get("answer") or "I couldn't generate a proper answer. Please try rephrasing."
+
+    answer = parsed.get("answer") or "I couldn't generate a proper answer."
+
     if parsed.get("type") != "code" or not parsed.get("pandas_code"):
         return answer
+
     code = parsed["pandas_code"]
     if not validate_code(code):
-        return answer + "<br><br><i>(I decided not to run a calculation for safety reasons.)</i>"
+        return answer
+
     try:
         result = safe_execute(code, df)
         formatted = format_result(result)
-        if "result" in answer.lower() or "is" in answer.lower()[:40]:
-            return f"{answer}<br><br>{formatted}"
-        else:
-            return f"{answer}<br><br><b>Result:</b><br>{formatted}"
-    except Exception as e:
-        err_msg = f"{type(e).__name__}: {str(e)[:250]}"
-        retry_extra = (
-            f"The code you previously generated failed with this error: {err_msg}. "
-            "Please generate a simpler, more defensive pandas code that avoids this error. "
-            "Still return the same JSON format. Make the final 'answer' field complete and natural."
-        )
-        parsed2 = call_gemini(retry_extra)
-        if parsed2 and parsed2.get("pandas_code") and validate_code(parsed2["pandas_code"]):
-            try:
-                result = safe_execute(parsed2["pandas_code"], df)
-                formatted = format_result(result)
-                final_answer = parsed2.get("answer") or answer
-                return f"{final_answer}<br><br>{formatted}"
-            except Exception:
-                pass
-        return (
-            f"{answer}<br><br>"
-            "<i>I tried to compute the exact numbers but ran into a data issue. "
-            "You can try a simpler version of the question (e.g. “top 5 stations by FCOUNT”).</i>"
-        )
-
-# ====================== SESSION STATE ======================
+        return f"{answer}<br><br>{formatted}"
+    except Exception:
+        # Final fallback to the reliable offline method
+        return basic_offline_fallback(question, df)# ====================== SESSION STATE ======================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "map_selected_station" not in st.session_state:
