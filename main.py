@@ -304,6 +304,30 @@ def get_jurisdiction(station, department):
     # Use S&T mapping as default (most relevant for Data Logger)
     return SNT_ADSTE.get(stn, SNT_ADSTE.get(station, "Unclassified"))
 
+# ====================== HELPER: SYSTEMATIC SORT ======================
+def sort_systematically(df: pd.DataFrame) -> pd.DataFrame:
+    """Sort dataframe systematically for reports:
+       1. DATE (newest first)
+       2. STATION (A→Z)
+       3. FCOUNT (highest first)
+    """
+    if df.empty:
+        return df
+    sort_cols = []
+    ascending = []
+    if 'DATE' in df.columns:
+        sort_cols.append('DATE')
+        ascending.append(False)          # newest first
+    if 'STATION' in df.columns:
+        sort_cols.append('STATION')
+        ascending.append(True)           # A → Z
+    if 'FCOUNT' in df.columns:
+        sort_cols.append('FCOUNT')
+        ascending.append(False)          # highest first
+    if sort_cols:
+        return df.sort_values(by=sort_cols, ascending=ascending, kind='mergesort').reset_index(drop=True)
+    return df.reset_index(drop=True)
+
 # ====================== SESSION STATE ======================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -444,7 +468,7 @@ else:
     if selected_fault and 'DL FAULT MESSAGE' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['DL FAULT MESSAGE'].isin(selected_fault)]
     if selected_remark and 'REMARKS GIVEN BY S&T' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['DL FAULT MESSAGE'].isin(selected_remark)]
+        filtered_df = filtered_df[filtered_df['REMARKS GIVEN BY S&T'].isin(selected_remark)]  # FIXED
     if selected_jurisdictions and 'JURISDICTION' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['JURISDICTION'].isin(selected_jurisdictions)]
     if st.session_state.map_selected_station:
@@ -523,7 +547,7 @@ else:
         if filtered_df.empty:
             st.warning("No records found.")
         else:
-            display_df = filtered_df.copy()
+            display_df = sort_systematically(filtered_df.copy())   # ← SORTED
             if 'DATE' in display_df.columns:
                 display_df['DATE'] = display_df['DATE'].dt.date
             preferred_order = ['DATE', 'STATION', 'DEPARTMENT', 'JURISDICTION', 'ERROR MAIN CATEGORY',
@@ -537,25 +561,34 @@ else:
             with col_btn2:
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    display_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
+                    # Main filtered data – already sorted
+                    display_df[cols].to_excel(writer, index=False, sheet_name='Filtered_Records')
+
                     if 'STATION' in filtered_df.columns:
-                        station_summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
-                            Total_FCOUNT='sum', Record_Count='count'
-                        ).sort_values('Total_FCOUNT', ascending=False).reset_index()
+                        station_summary = (filtered_df.groupby('STATION')['FCOUNT']
+                                           .agg(Total_FCOUNT='sum', Record_Count='count')
+                                           .sort_values('Total_FCOUNT', ascending=False)
+                                           .reset_index())
                         station_summary.to_excel(writer, index=False, sheet_name='Station_Summary')
+
                     if not error_sum.empty:
                         error_sum.to_excel(writer, index=False, sheet_name='Error_Summary')
                     if not cat_sum.empty:
                         cat_sum.to_excel(writer, index=False, sheet_name='Category_Summary')
                     if not jur_sum.empty:
                         jur_sum.to_excel(writer, index=False, sheet_name='Jurisdiction_Summary')
-                    # Unclassified sheet only if exists
+
+                    # Unclassified sheet – also sorted
                     if 'JURISDICTION' in filtered_df.columns:
                         unclass_df = filtered_df[filtered_df['JURISDICTION'] == 'Unclassified'].copy()
                         if not unclass_df.empty:
+                            unclass_df = sort_systematically(unclass_df)
                             if 'DATE' in unclass_df.columns:
                                 unclass_df['DATE'] = pd.to_datetime(unclass_df['DATE'], errors='coerce').dt.date
-                            unclass_df.to_excel(writer, index=False, sheet_name='Unclassified_Records')
+                            unclass_cols = [c for c in preferred_order if c in unclass_df.columns] + \
+                                           [c for c in unclass_df.columns if c not in preferred_order]
+                            unclass_df[unclass_cols].to_excel(writer, index=False, sheet_name='Unclassified_Records')
+
                 output.seek(0)
                 st.download_button(
                     label="⬇️ Download Professional Excel Report",
@@ -707,10 +740,11 @@ else:
         if filtered_df.empty:
             st.warning("No records found.")
         else:
-            display_df = filtered_df.copy()
+            display_df = sort_systematically(filtered_df.copy())   # ← SORTED
             if 'DATE' in display_df.columns:
                 display_df['DATE'] = display_df['DATE'].dt.date
-            preferred_order = ['DATE', 'STATION', 'DEPARTMENT', 'JURISDICTION', 'ERROR MAIN CATEGORY', 'DL FAULT MESSAGE', 'FCOUNT', 'REMARKS GIVEN BY S&T']
+            preferred_order = ['DATE', 'STATION', 'DEPARTMENT', 'JURISDICTION', 'ERROR MAIN CATEGORY',
+                               'DL FAULT MESSAGE', 'FCOUNT', 'REMARKS GIVEN BY S&T']
             cols = [c for c in preferred_order if c in display_df.columns] + [c for c in display_df.columns if c not in preferred_order]
             st.dataframe(display_df[cols].style.format({"FCOUNT": "{:,}"}), use_container_width=True, hide_index=True)
 
@@ -719,15 +753,22 @@ else:
             with col_btn2:
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    display_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
+                    # Main filtered data – already sorted
+                    display_df[cols].to_excel(writer, index=False, sheet_name='Filtered_Records')
+
                     if not jur_sum.empty:
                         jur_sum.to_excel(writer, index=False, sheet_name='Jurisdiction_Summary')
+
                     if 'JURISDICTION' in filtered_df.columns:
                         unclass_df = filtered_df[filtered_df['JURISDICTION'] == 'Unclassified'].copy()
                         if not unclass_df.empty:
+                            unclass_df = sort_systematically(unclass_df)
                             if 'DATE' in unclass_df.columns:
                                 unclass_df['DATE'] = pd.to_datetime(unclass_df['DATE'], errors='coerce').dt.date
-                            unclass_df.to_excel(writer, index=False, sheet_name='Unclassified_Records')
+                            unclass_cols = [c for c in preferred_order if c in unclass_df.columns] + \
+                                           [c for c in unclass_df.columns if c not in preferred_order]
+                            unclass_df[unclass_cols].to_excel(writer, index=False, sheet_name='Unclassified_Records')
+
                 output.seek(0)
                 st.download_button(
                     label="⬇️ Download Map Filtered Report",
