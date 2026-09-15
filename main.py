@@ -436,6 +436,22 @@ def get_gemini_client():
     return genai.Client(api_key=api_key)
  
  
+def diagnose_gemini_setup():
+    """Non-cached — always re-checks from scratch. Returns (ok: bool, message: str)."""
+    if genai is None:
+        return False, "❌ `google-genai` did not import. Run `pip show google-genai` in the SAME terminal/venv you use to launch this Streamlit app."
+    try:
+        api_key = st.secrets["gemini"]["api_key"]
+    except Exception as e:
+        return False, f"❌ Could not read st.secrets['gemini']['api_key']: {e}"
+    if not api_key or not str(api_key).strip():
+        return False, "❌ api_key was found in secrets but it's empty."
+    try:
+        test_client = genai.Client(api_key=api_key)
+        resp = test_client.models.generate_content(model=MODEL_NAME, contents="Say OK")
+        return True, f"✅ Working! Gemini replied: {resp.text.strip()[:100]}"
+    except Exception as e:
+        return False, f"❌ genai.Client()/generate_content raised: {type(e).__name__}: {e}"
 # ==========================================================================
 # BUILD A COMPACT DESCRIPTION OF THE DATA FOR GEMINI
 # ==========================================================================
