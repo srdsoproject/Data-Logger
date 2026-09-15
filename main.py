@@ -9,6 +9,10 @@ from streamlit_folium import st_folium
 from folium.plugins import Fullscreen
 import re
 from difflib import SequenceMatcher
+import json
+import signal
+import platform
+from typing import Optional
 
 # ====================== PAGE CONFIG ======================
 st.set_page_config(
@@ -53,8 +57,6 @@ st.markdown("""
         margin-bottom: 20px;
         text-align: center;
     }
-
-    /* ========== COOL CHATBOT STYLING ========== */
     .chatbot-header {
         background: linear-gradient(135deg, #003087, #0056b3);
         color: white;
@@ -399,54 +401,251 @@ def get_jurisdiction(station, department):
     
     return SNT_ADSTE.get(stn, SNT_ADSTE.get(station, "Unclassified"))
 
-# ====================== IMPROVED AI CHATBOT ======================
+# ====================== NATURAL AI CHATBOT ======================
+try:
+    from google import genai
+    from google.genai import types as genai_types
+except ImportError:
+    genai = None
+    genai_types = None
 
-with st.sidebar:
-    st.header("🔧 Controls")
-    if st.button("🔄 Refresh Data", type="primary", use_container_width=True, key="refresh_btn"):
-        refresh_data()
+MODEL_NAME = "gemini-3.6-flash"
 
-    st.markdown("---")
+def _read_gemini_api_key():
+    try:
+        key = st.secrets["gemini"]["api_key"]
+        if key and str(key).strip():
+            return str(key).strip()
+    except Exception:
+        pass
+    for path in [("gemini", "API_KEY"), ("GEMINI_API_KEY",), ("GOOGLE_API_KEY",)]:
+        try:
+            key = st.secrets[path[0]] if len(path) == 1 else st.secrets[path[0]][path[1]]
+            if key and str(key).strip():
+                return str(key).strip()
+        except Exception:
+            continue
+    return None
 
-    st.markdown("""
-    <div class="chatbot-header">
-        🤖 AI Chatbot
-        <span>Spelling tolerant</span>
-    </div>
-    """, unsafe_allow_html=True)
+@st.cache_resource
+def get_gemini_client():
+    if genai is None:
+        return None
+    api_key = _read_gemini_api_key()
+    if not api_key:
+        return None
+    try:
+        return genai.Client(api_key=api_key)
+    except Exception:
+        return None
 
-    # Chat history
-    chat_html = '<div class="chat-container">'
-    for chat in st.session_state.chat_history[-12:]:
-        if chat["role"] == "user":
-            chat_html += f'''
-            <div class="chat-message user-msg">
-                <span class="chat-avatar">👤</span>{chat["content"]}
-            </div>'''
+def clear_gemini_cache():
+    get_gemini_client.clear()
+
+def build_data_context(df: pd.DataFrame) -> str:
+    if df is None or df.empty:
+        return "The dataframe is currently empty."
+    lines = [f"Dataframe has {len(df):,} rows. Columns:"]
+    for col in df.columns:
+        lines.append(f"  • {col} ({df[col].dtype})")
+    lines.append("\nKey categorical values (sample):")
+    for col in ["STATION", "DEPARTMENT", "ERROR MAIN CATEGORY", "JURISDICTION", "MONTH"]:
+        if col in df.columns:
+            uniques = df[col].dropna().astype(str).unique().tolist()
+            shown = uniques[:25]
+            more = f" ... +{len(uniques)-25} more" if len(uniques) > 25 else ""
+            lines.append(f"  • {col}: {shown}{more}")
+    if "DATE" in df.columns and pd.api.types.is_datetime64_any_dtype(df["DATE"]):
+        try:
+            lines.append(f"\nDate range: {df['DATE'].min().date()} → {df['DATE'].max().date()}")
+        except Exception:
+            pass
+    if "FCOUNT" in df.columns:
+        try:
+            lines.append(f"Total FCOUNT in current data: {int(df['FCOUNT'].sum()):,}")
+        except Exception:
+            pass
+    return "\n".join(lines)
+
+NATURAL_SYSTEM_PROMPT = """You are a precise data analyst for the Central Railway Solapur Division Safety Data-Logger.
+
+You have a pandas DataFrame called `df`. Description:
+
+{data_context}
+
+STRICT RULES:
+- For ANY question that involves numbers, counts, totals, rankings, averages, trends, comparisons, "how many", "top", "highest", "lowest", "total FCOUNT", etc. → you MUST set "type": "code" and generate correct pandas code.
+- Never invent or guess numbers. Only report what the code actually returns.
+- The "answer" field must be a natural, complete sentence that includes the real numbers from the calculation.
+- Code must be short, defensive, and assign the final value to `result`.
+- Use only real column names from the context above.
+- Always handle NaNs (dropna or fillna(0)).
+
+Respond ONLY with this JSON:
+{{
+  "type": "text" or "code",
+  "answer": "natural language answer the user will see",
+  "pandas_code": "code here if type=code, else null"
+}}
+"""
+
+FORBIDDEN_PATTERNS = [
+    r"\bimport\b", r"\bopen\s*\(", r"\bexec\s*\(", r"\beval\s*\(", r"\bcompile\s*\(",
+    r"\bos\.", r"\bsys\.", r"\bsubprocess\b", r"\brequests\b", r"\bsocket\b",
+    r"__\w+__", r"\bglobals\s*\(", r"\blocals\s*\(", r"\bgetattr\s*\(", r"\bsetattr\s*\(",
+    r"\bdelattr\s*\(", r"\binput\s*\(", r"\.system\s*\(", r"\bread_csv\s*\(", r"\bread_excel\s*\(",
+    r"\bto_csv\s*\(", r"\bto_excel\s*\(", r"\bdf\s*=\s*", r"\bdf\.drop\s*\(.*inplace",
+    r"\bdf\[.*\]\s*=",
+]
+
+def validate_code(code: str) -> bool:
+    if not code or not isinstance(code, str):
+        return False
+    for p in FORBIDDEN_PATTERNS:
+        if re.search(p, code, re.IGNORECASE):
+            return False
+    return True
+
+class _TimeoutError(Exception):
+    pass
+
+def _timeout_handler(signum, frame):
+    raise _TimeoutError()
+
+def safe_execute(code: str, df: pd.DataFrame, timeout_seconds: int = 6):
+    safe_builtins = {
+        "len": len, "int": int, "float": float, "str": str, "round": round,
+        "sorted": sorted, "list": list, "dict": dict, "set": set, "sum": sum,
+        "min": min, "max": max, "abs": abs, "range": range, "enumerate": enumerate,
+        "zip": zip, "bool": bool, "isinstance": isinstance, "type": type,
+    }
+    local_ns = {"df": df.copy(), "pd": pd, "result": None}
+    global_ns = {"__builtins__": safe_builtins}
+    use_alarm = platform.system() != "Windows"
+    if use_alarm:
+        old = signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(timeout_seconds)
+    try:
+        exec(code, global_ns, local_ns)
+    finally:
+        if use_alarm:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old)
+    return local_ns.get("result")
+
+def format_result(result) -> str:
+    if result is None:
+        return "No result."
+    if isinstance(result, (int, float)):
+        if isinstance(result, float) and not result.is_integer():
+            return f"<b>{result:,.2f}</b>"
+        return f"<b>{int(result):,}</b>"
+    if isinstance(result, str):
+        return result
+    if isinstance(result, pd.Series):
+        items = list(result.items())[:15]
+        lines = []
+        for idx, val in items:
+            if isinstance(val, float):
+                lines.append(f"• <b>{idx}</b>: {val:,.2f}")
+            else:
+                lines.append(f"• <b>{idx}</b>: {val:,}")
+        more = f"<br>...and {len(result)-15} more" if len(result) > 15 else ""
+        return "<br>".join(lines) + more
+    if isinstance(result, pd.DataFrame):
+        try:
+            return result.head(12).to_html(index=False, border=0, classes="chat-result-table")
+        except Exception:
+            return result.head(12).to_string(index=False)
+    return str(result)
+
+def basic_offline_fallback(question: str, df: pd.DataFrame) -> str:
+    q = question.lower()
+    if df is None or df.empty:
+        return "I don't have data loaded right now."
+    if any(w in q for w in ["top", "highest", "most"]) and "STATION" in df.columns and "FCOUNT" in df.columns:
+        totals = df.groupby("STATION")["FCOUNT"].sum().sort_values(ascending=False)
+        if not totals.empty:
+            return f"The station with the highest FCOUNT is <b>{totals.index[0]}</b> with <b>{int(totals.iloc[0]):,}</b>."
+    if "total" in q and "fcount" in q and "FCOUNT" in df.columns:
+        return f"Total FCOUNT right now is <b>{int(df['FCOUNT'].sum()):,}</b>."
+    if "total" in q and ("record" in q or "case" in q or "row" in q):
+        return f"There are currently <b>{len(df):,}</b> records."
+    return "I'm temporarily unable to reach the AI model. Please try again in a few seconds."
+
+def ask_chatbot(question: str, df: pd.DataFrame, force_refresh_callback=None) -> str:
+    if not question or not question.strip():
+        return "Ask me anything about the data — stations, FCOUNT, departments, trends, comparisons..."
+    if force_refresh_callback and any(w in question.lower() for w in ["latest data", "live data", "refresh data", "up to date"]):
+        try:
+            force_refresh_callback()
+        except Exception:
+            pass
+    client = get_gemini_client()
+    if client is None:
+        return ("The AI is not configured yet.<br><br>"
+                "Please add this in Streamlit Cloud → Settings → Secrets:<br><br>"
+                "<code>[gemini]<br>api_key = \"AIzaSy...\"</code><br><br>"
+                "Then click <b>Clear Gemini Cache</b> and try again.<br><br>"
+                + basic_offline_fallback(question, df))
+    data_context = build_data_context(df)
+    system_prompt = NATURAL_SYSTEM_PROMPT.format(data_context=data_context)
+    def call_gemini(extra: str = "") -> Optional[dict]:
+        prompt = question if not extra else f"{question}\n\nAdditional instruction: {extra}"
+        try:
+            resp = client.models.generate_content(
+                model=MODEL_NAME,
+                contents=prompt,
+                config=genai_types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    temperature=0.2,
+                    response_mime_type="application/json",
+                ),
+            )
+            raw = resp.text.strip()
+            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw)
+            return json.loads(raw)
+        except Exception:
+            return None
+    parsed = call_gemini()
+    if parsed is None:
+        return basic_offline_fallback(question, df)
+    answer = parsed.get("answer") or "I couldn't generate a proper answer. Please try rephrasing."
+    if parsed.get("type") != "code" or not parsed.get("pandas_code"):
+        return answer
+    code = parsed["pandas_code"]
+    if not validate_code(code):
+        return answer + "<br><br><i>(I decided not to run a calculation for safety reasons.)</i>"
+    try:
+        result = safe_execute(code, df)
+        formatted = format_result(result)
+        if "result" in answer.lower() or "is" in answer.lower()[:40]:
+            return f"{answer}<br><br>{formatted}"
         else:
-            chat_html += f'''
-            <div class="chat-message bot-msg">
-                <span class="chat-avatar">🤖</span>{chat["content"]}
-            </div>'''
-    chat_html += '</div>'
-    st.markdown(chat_html, unsafe_allow_html=True)
+            return f"{answer}<br><br><b>Result:</b><br>{formatted}"
+    except Exception as e:
+        err_msg = f"{type(e).__name__}: {str(e)[:250]}"
+        retry_extra = (
+            f"The code you previously generated failed with this error: {err_msg}. "
+            "Please generate a simpler, more defensive pandas code that avoids this error. "
+            "Still return the same JSON format. Make the final 'answer' field complete and natural."
+        )
+        parsed2 = call_gemini(retry_extra)
+        if parsed2 and parsed2.get("pandas_code") and validate_code(parsed2["pandas_code"]):
+            try:
+                result = safe_execute(parsed2["pandas_code"], df)
+                formatted = format_result(result)
+                final_answer = parsed2.get("answer") or answer
+                return f"{final_answer}<br><br>{formatted}"
+            except Exception:
+                pass
+        return (
+            f"{answer}<br><br>"
+            "<i>I tried to compute the exact numbers but ran into a data issue. "
+            "You can try a simpler version of the question (e.g. “top 5 stations by FCOUNT”).</i>"
+        )
 
-    if st.button("🗑️ Clear Chat", use_container_width=True, key="clear_chat_btn"):
-        st.session_state.chat_history = []
-        st.rerun()
-
-    st.markdown("---")
-    st.markdown("**🔧 Gemini Status**")
-    if st.button("🔍 Diagnose Gemini", use_container_width=True, key="diagnose_btn"):
-        client = get_gemini_client()
-        if client:
-            st.success("✅ Gemini client is ready")
-        else:
-            st.error("❌ Gemini client not available – check secrets")
-    if st.button("🗑️ Clear Gemini Cache", use_container_width=True, key="clear_gemini_btn"):
-        clear_gemini_cache()
-        st.success("Cache cleared")
-        st.rerun()# ====================== SESSION STATE ======================
+# ====================== SESSION STATE ======================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "map_selected_station" not in st.session_state:
@@ -524,15 +723,14 @@ else:
 
     df_original = load_data_from_gsheet()
 
-    # ====================== SIDEBAR ======================
+    # ====================== SIDEBAR (Controls + Chat History) ======================
     with st.sidebar:
         st.header("🔧 Controls")
-        if st.button("🔄 Refresh Data", type="primary", use_container_width=True):
+        if st.button("🔄 Refresh Data", type="primary", use_container_width=True, key="refresh_btn"):
             refresh_data()
 
         st.markdown("---")
 
-        # Cool Chatbot Header
         st.markdown("""
         <div class="chatbot-header">
             🤖 AI Chatbot
@@ -540,7 +738,6 @@ else:
         </div>
         """, unsafe_allow_html=True)
 
-        # Chat messages
         chat_html = '<div class="chat-container">'
         for chat in st.session_state.chat_history[-12:]:
             if chat["role"] == "user":
@@ -556,20 +753,23 @@ else:
         chat_html += '</div>'
         st.markdown(chat_html, unsafe_allow_html=True)
 
-        user_question = st.chat_input("Ask me anything about the data...")
-        if user_question:
-            st.session_state.chat_history.append({"role": "user", "content": user_question})
-            
-            # Use the FILTERED data that the user is currently looking at
-            answer = ask_chatbot(user_question, filtered_df)
-            
-            st.session_state.chat_history.append({"role": "assistant", "content": answer})
-            st.rerun()
-
-        if st.button("🗑️ Clear Chat", use_container_width=True):
+        if st.button("🗑️ Clear Chat", use_container_width=True, key="clear_chat_btn"):
             st.session_state.chat_history = []
             st.rerun()
-       
+
+        st.markdown("---")
+        st.markdown("**🔧 Gemini Status**")
+        if st.button("🔍 Diagnose Gemini", use_container_width=True, key="diagnose_btn"):
+            client = get_gemini_client()
+            if client:
+                st.success("✅ Gemini client is ready")
+            else:
+                st.error("❌ Gemini client not available – check secrets")
+        if st.button("🗑️ Clear Gemini Cache", use_container_width=True, key="clear_gemini_btn"):
+            clear_gemini_cache()
+            st.success("Cache cleared")
+            st.rerun()
+
     # ====================== LIVE FILTERS ======================
     st.markdown("### 🔍 Live Filters")
     col_f1 = st.columns([2, 2, 2, 2])
@@ -635,20 +835,16 @@ else:
         filtered_df = filtered_df[filtered_df['JURISDICTION'].isin(selected_jurisdictions)]
     if st.session_state.map_selected_station:
         filtered_df = filtered_df[filtered_df['STATION'] == st.session_state.map_selected_station]
-# ====================== APPLY FILTERS ======================
-    filtered_df = df_original.copy()
-    if 'DATE' in filtered_df.columns:
-        filtered_df = filtered_df[
-            (filtered_df['DATE'].dt.date >= from_date) &
-            (filtered_df['DATE'].dt.date <= to_date)
-        ]
-    if selected_stations:
-        filtered_df = filtered_df[filtered_df['STATION'].isin(selected_stations)]
-    if selected_errors and 'ERROR MAIN CATEGORY' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['ERROR MAIN CATEGORY'].isin(selected_errors)]
-    if selected_categories and 'DEPARTMENT' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['DEPARTMENT'].isin(selected_categories)]
-        
+
+    # ====================== CHATBOT INPUT (AFTER filtered_df exists) ======================
+    with st.sidebar:
+        user_question = st.chat_input("Ask me anything about the data...")
+        if user_question:
+            st.session_state.chat_history.append({"role": "user", "content": user_question})
+            answer = ask_chatbot(user_question, filtered_df)
+            st.session_state.chat_history.append({"role": "assistant", "content": answer})
+            st.rerun()
+
     # ====================== PRE-COMPUTE SUMMARIES ======================
     cat_sum = pd.DataFrame()
     error_sum = pd.DataFrame()
@@ -669,7 +865,6 @@ else:
     with tab_overview:
         st.subheader("📊 Overview Dashboard")
 
-        # High FCOUNT Alert
         if not filtered_df.empty and 'STATION' in filtered_df.columns and 'FCOUNT' in filtered_df.columns:
             station_fcount = filtered_df.groupby('STATION')['FCOUNT'].sum().sort_values(ascending=False)
             critical_stations = station_fcount[station_fcount >= 1000]
@@ -682,7 +877,6 @@ else:
                     alert_text += f" + {len(critical_stations)-5} more"
                 st.markdown(f'<div class="alert-box">{alert_text}</div>', unsafe_allow_html=True)
 
-        # KPI Metrics
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             st.metric("Total Records", f"{len(filtered_df):,}")
@@ -705,7 +899,6 @@ else:
 
         st.markdown("---")
 
-        # Top 15 + Station Summary
         col_g1, col_g2 = st.columns([3, 2])
         with col_g1:
             st.markdown('<p class="section-header">Top 15 Stations by FCOUNT</p>', unsafe_allow_html=True)
@@ -721,7 +914,6 @@ else:
                 summary = filtered_df.groupby('STATION')['FCOUNT'].agg(Total_FCOUNT='sum', Records='count').sort_values('Total_FCOUNT', ascending=False)
                 st.dataframe(summary.style.format({"Total_FCOUNT": "{:,}", "Records": "{:,}"}).background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'), use_container_width=True)
 
-        # Monthly Trend
         st.markdown("---")
         st.markdown('<p class="section-header">📈 Monthly Trend of FCOUNT</p>', unsafe_allow_html=True)
         
@@ -742,7 +934,6 @@ else:
         else:
             st.info("No monthly data available for trend.")
 
-        # Distribution Charts
         st.markdown("---")
         st.markdown('<p class="section-header">📊 Distribution Charts</p>', unsafe_allow_html=True)
         
@@ -791,7 +982,6 @@ else:
             else:
                 st.info("No Jurisdiction data")
 
-        # Summary Tables
         st.markdown("---")
         col_s1, col_s2, col_s3 = st.columns(3)
         with col_s1:
@@ -807,7 +997,6 @@ else:
                 st.markdown('<p class="section-header">JURISDICTION</p>', unsafe_allow_html=True)
                 st.dataframe(jur_sum.style.format({"Cases": "{:,}"}), use_container_width=True, hide_index=True)
 
-        # Detailed Records
         st.markdown("---")
         st.markdown('<p class="section-header">Detailed Records</p>', unsafe_allow_html=True)
         if filtered_df.empty:
@@ -854,7 +1043,7 @@ else:
         if st.session_state.map_selected_station:
             col_clear1, col_clear2 = st.columns([1, 5])
             with col_clear1:
-                if st.button("🔄 Clear Station Selection", type="secondary", use_container_width=True):
+                if st.button("🔄 Clear Station Selection", type="secondary", use_container_width=True, key="clear_map_btn"):
                     st.session_state.map_selected_station = None
                     st.rerun()
             st.success(f"📍 Currently viewing: **{st.session_state.map_selected_station}**")
