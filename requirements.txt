@@ -18,3 +18,4 @@ matplotlib==3.9.2
 openrouteservice
 anthropic
 google-generativeai
+google-genai
