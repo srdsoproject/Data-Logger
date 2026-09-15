@@ -418,7 +418,7 @@ except ImportError:
     genai_types = None
  
 # Revisit this periodically -- see "MODEL NAME NOTE" above.
-MODEL_NAME = "gemini-2.5-flash"
+MODEL_NAME = "gemini-3.6-flash"
  
  
 # ==========================================================================
