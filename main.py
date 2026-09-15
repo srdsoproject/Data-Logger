@@ -1,4 +1,3 @@
-# datalogger_streamlit.py
 import pandas as pd
 import streamlit as st
 import plotly.express as px
@@ -7,6 +6,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import folium
 from streamlit_folium import st_folium
+from folium.plugins import Fullscreen
 
 # ====================== PAGE CONFIG ======================
 st.set_page_config(
@@ -47,14 +47,14 @@ station_coords = {
     "HQR": {"lat": 17.258329320477387, "lon": 76.87213360102963},
     "KLBG": {"lat": 17.31464128074813, "lon": 76.82539943154254},
     "TJSP": {"lat": 17.38155787142842, "lon": 76.83078651026582},
-    "BBD": {"lat": 17.336940866375414, "lon":76.7792743961494},
-    "SVG": {"lat": 17.33968072788599, "lon":76.71139619013732},
-    "HHD": {"lat": 17.352700945672176, "lon":76.64674999614954},
-    "GUR": {"lat": 17.340847607132325, "lon":76.5895995384797},
-    "KUI": {"lat": 17.357481126320312, "lon":76.47050033971526},
-    "DUD": {"lat": 17.36262542350625, "lon":76.38023255381961},
-    "NGS": {"lat": 17.429201164736277, "lon":76.18296853848099},
-    "BOT": {"lat": 17.395116057678774, "lon":76.25531964887394},
+    "BBD": {"lat": 17.336940866375414, "lon": 76.7792743961494},
+    "SVG": {"lat": 17.33968072788599, "lon": 76.71139619013732},
+    "HHD": {"lat": 17.352700945672176, "lon": 76.64674999614954},
+    "GUR": {"lat": 17.340847607132325, "lon": 76.5895995384797},
+    "KUI": {"lat": 17.357481126320312, "lon": 76.47050033971526},
+    "DUD": {"lat": 17.36262542350625, "lon": 76.38023255381961},
+    "NGS": {"lat": 17.429201164736277, "lon": 76.18296853848099},
+    "BOT": {"lat": 17.395116057678774, "lon": 76.25531964887394},
     "AKOR": {"lat": 17.450540923674154, "lon": 76.13878780964653},
     "TLT": {"lat": 17.529150347297044, "lon": 76.03601785680922},
     "HG STN": {"lat": 17.565461287426693, "lon": 75.9894306025621},
@@ -76,12 +76,12 @@ station_coords = {
     "BLNI": {"lat": 18.210581627334815, "lon": 75.20717558551391},
     "JEUR": {"lat": 18.260861679574607, "lon": 75.16233780965912},
     "PPJ": {"lat": 18.291563656218496, "lon": 75.09802889616424},
-    "WSB": {"lat": 18.280298357551207, "lon":75.01623199616414},
-    "KEU": {"lat": 18.290095464926527, "lon":74.95250352348742},
-    "JNTR": {"lat": 18.324947721792178, "lon":74.8776102384951},
-    "BGVN": {"lat": 18.316891480050153, "lon":74.77494537837337},
-    "MLM": {"lat": 18.368948833491366, "lon":74.72444118537874},
-    "BRB": {"lat": 18.407915112523582, "lon":74.6490078310967},
+    "WSB": {"lat": 18.280298357551207, "lon": 75.01623199616414},
+    "KEU": {"lat": 18.290095464926527, "lon": 74.95250352348742},
+    "JNTR": {"lat": 18.324947721792178, "lon": 74.8776102384951},
+    "BGVN": {"lat": 18.316891480050153, "lon": 74.77494537837337},
+    "MLM": {"lat": 18.368948833491366, "lon": 74.72444118537874},
+    "BRB": {"lat": 18.407915112523582, "lon": 74.6490078310967},
     "MRJ": {"lat": 16.81963598398112, "lon": 74.63884656730691},
     "BLWD": {"lat": 16.816450353858315, "lon": 74.6848784309091},
     "BDK": {"lat": 16.82260514883158, "lon": 74.73242941035451},
@@ -127,7 +127,182 @@ station_coords = {
     "BANL": {"lat": 18.44605226022196, "lon": 76.67840203837198},
     "GANI": {"lat": 18.479267109518492, "lon": 76.76394964918596},
     "DD": {"lat": 18.46377428753149, "lon": 74.57928783698621},
+    "HG": {"lat": 17.565461287426693, "lon": 75.9894306025621},
 }
+
+# ====================== JURISDICTION MAPPINGS ======================
+ENGG_ADEN = {
+    "WADI": "ADEN KLBG", "SDB": "ADEN KLBG", "MR": "ADEN KLBG", "HQR": "ADEN KLBG",
+    "KLBG": "ADEN KLBG", "BBD": "ADEN KLBG", "SVG": "ADEN KLBG", "HHD": "ADEN KLBG",
+    "GUR": "ADEN KLBG", "KUI": "ADEN KLBG", "TJSP": "ADEN KLBG", "GDGN": "ADEN KLBG",
+    "SBD": "ADEN KLBG",
+    "AKOR": "ADEN S SUR", "BOT": "ADEN S SUR", "DUD": "ADEN S SUR", "HG": "ADEN S SUR",
+    "NGS": "ADEN S SUR", "TKWD": "ADEN S SUR", "TLT": "ADEN S SUR",
+    "HG STN": "ADEN S SUR", "HG-A": "ADEN S SUR",
+    "AAG": "Sr.ADEN N SUR", "BALE": "Sr.ADEN N SUR", "MA": "Sr.ADEN N SUR", "MKPT": "Sr.ADEN N SUR",
+    "MO": "Sr.ADEN N SUR", "MVE": "Sr.ADEN N SUR", "PK": "Sr.ADEN N SUR", "SUR": "Sr.ADEN N SUR",
+    "WDS": "Sr.ADEN N SUR", "WKA": "Sr.ADEN N SUR", "MOHOL": "Sr.ADEN N SUR", "PAKNI": "Sr.ADEN N SUR",
+    "BGVN": "Sr.ADEN KWV BG", "BLNI": "Sr.ADEN KWV BG", "BRB": "Sr.ADEN KWV BG", "DHS": "Sr.ADEN KWV BG",
+    "JEUR": "Sr.ADEN KWV BG", "JNTR": "Sr.ADEN KWV BG", "KEM": "Sr.ADEN KWV BG", "KWV": "Sr.ADEN KWV BG",
+    "MLM": "Sr.ADEN KWV BG", "PPJ": "Sr.ADEN KWV BG", "WSB": "Sr.ADEN KWV BG", "KEU": "Sr.ADEN KWV BG",
+    "WSD": "Sr.ADEN KWV BG", "DD": "Sr.ADEN KWV BG", "MADHA": "Sr.ADEN KWV BG",
+    "PSS": "Sr.ADEN KWV BG", "LAUL": "Sr.ADEN KWV BG", "CNHL": "Sr.ADEN KWV BG", "MGO": "Sr.ADEN KWV BG",
+    "ARAG": "ADEN/PVR", "DLGN": "ADEN/PVR", "JTRD": "ADEN/PVR", "KVK": "ADEN/PVR",
+    "MLB": "ADEN/PVR", "PVR": "ADEN/PVR", "SGLA": "ADEN/PVR", "SGRE": "ADEN/PVR", "MRJ": "ADEN/PVR",
+    "MSDG": "ADEN/PVR", "JVA": "ADEN/PVR", "GLV": "ADEN/PVR", "LNP": "ADEN/PVR", "AGDl": "ADEN/PVR",
+    "BLWD": "ADEN/PVR", "BDK": "ADEN/PVR", "BLNK": "ADEN/PVR", "BBV": "ADEN/PVR",
+    "AHI": "ADEN/PVR", "BMNI": "ADEN/PVR", "BHLI": "ADEN/PVR",
+    "BTW": "ADEN/LUR", "DKY": "ADEN/LUR", "HGL": "ADEN/LUR", "LUR": "ADEN/LUR",
+    "OSA": "ADEN/LUR", "PJR": "ADEN/LUR", "SEI": "ADEN/LUR", "YSI": "ADEN/LUR",
+    "DRSV": "ADEN/LUR", "MRX": "ADEN/LUR", "LTRR": "ADEN/LUR", "UMD": "ADEN/LUR",
+    "UPI": "ADEN/LUR", "KCB": "ADEN/LUR", "TER": "ADEN/LUR", "PCP": "ADEN/LUR",
+    "NEI": "ADEN/LUR", "KRMD": "ADEN/LUR", "BANL": "ADEN/LUR", "GANI": "ADEN/LUR",
+}
+
+ELECT_G_SSE = {
+    "KWV": "SSE/ELECT/KWV", "DHS": "SSE/ELECT/KWV", "KEM": "SSE/ELECT/KWV", "BLNI": "SSE/ELECT/KWV",
+    "BTW": "SSE/ELECT/KWV", "SEI": "SSE/ELECT/KWV", "PPJ": "SSE/ELECT/KWV", "WSB": "SSE/ELECT/KWV",
+    "KEU": "SSE/ELECT/KWV", "JNTR": "SSE/ELECT/KWV", "BGVN": "SSE/ELECT/KWV", "MLM": "SSE/ELECT/KWV",
+    "BRB": "SSE/ELECT/KWV", "DD": "SSE/ELECT/KWV", "MLB": "SSE/ELECT/KWV", "PVR": "SSE/ELECT/KWV",
+    "SGLA": "SSE/ELECT/KWV", "DLGN": "SSE/ELECT/KWV", "JTRD": "SSE/ELECT/KWV", "SGRE": "SSE/ELECT/KWV",
+    "ARAG": "SSE/ELECT/KWV", "KVK": "SSE/ELECT/KWV", "MRJ": "SSE/ELECT/KWV", "MKPT": "SSE/ELECT/KWV",
+    "AAG": "SSE/ELECT/KWV", "WKA": "SSE/ELECT/KWV", "MA": "SSE/ELECT/KWV", "WDS": "SSE/ELECT/KWV",
+    "WSD": "SSE/ELECT/KWV", "MADHA": "SSE/ELECT/KWV", "PSS": "SSE/ELECT/KWV", "LAUL": "SSE/ELECT/KWV",
+    "CNHL": "SSE/ELECT/KWV", "MGO": "SSE/ELECT/KWV", "MSDG": "SSE/ELECT/KWV", "JVA": "SSE/ELECT/KWV",
+    "GLV": "SSE/ELECT/KWV", "LNP": "SSE/ELECT/KWV", "AGDl": "SSE/ELECT/KWV", "BLWD": "SSE/ELECT/KWV",
+    "BDK": "SSE/ELECT/KWV", "BLNK": "SSE/ELECT/KWV", "BBV": "SSE/ELECT/KWV", "AHI": "SSE/ELECT/KWV",
+    "BMNI": "SSE/ELECT/KWV", "BHLI": "SSE/ELECT/KWV",
+    "DUD": "SSE/ELECT/SUR", "NGS": "SSE/ELECT/SUR", "BOT": "SSE/ELECT/SUR", "AKOR": "SSE/ELECT/SUR",
+    "SUR": "SSE/ELECT/SUR", "JEUR": "SSE/ELECT/SUR", "PK": "SSE/ELECT/SUR", "BALE": "SSE/ELECT/SUR",
+    "MVE": "SSE/ELECT/SUR", "MO": "SSE/ELECT/SUR", "TKWD": "SSE/ELECT/SUR", "HG": "SSE/ELECT/SUR",
+    "TLT": "SSE/ELECT/SUR", "HG STN": "SSE/ELECT/SUR", "HG-A": "SSE/ELECT/SUR",
+    "MOHOL": "SSE/ELECT/SUR", "PAKNI": "SSE/ELECT/SUR",
+    "KUI": "SSE/ELECT/KLBG", "GDGN": "SSE/ELECT/KLBG", "GUR": "SSE/ELECT/KLBG", "SVG": "SSE/ELECT/KLBG",
+    "BBD": "SSE/ELECT/KLBG", "KLBG": "SSE/ELECT/KLBG", "TJSP": "SSE/ELECT/KLBG", "HQR": "SSE/ELECT/KLBG",
+    "MR": "SSE/ELECT/KLBG", "SDB": "SSE/ELECT/KLBG", "SBD": "SSE/ELECT/KLBG", "WADI": "SSE/ELECT/KLBG",
+    "HHD": "SSE/ELECT/KLBG",
+    "PJR": "SSE/ELECT/LUR", "YSI": "SSE/ELECT/LUR", "DKY": "SSE/ELECT/LUR", "OSA": "SSE/ELECT/LUR",
+    "HGL": "SSE/ELECT/LUR", "LUR": "SSE/ELECT/LUR", "DRSV": "SSE/ELECT/LUR", "MRX": "SSE/ELECT/LUR",
+    "LTRR": "SSE/ELECT/LUR", "UMD": "SSE/ELECT/LUR", "UPI": "SSE/ELECT/LUR", "KCB": "SSE/ELECT/LUR",
+    "TER": "SSE/ELECT/LUR", "PCP": "SSE/ELECT/LUR", "NEI": "SSE/ELECT/LUR", "KRMD": "SSE/ELECT/LUR",
+    "BANL": "SSE/ELECT/LUR", "GANI": "SSE/ELECT/LUR",
+}
+
+ELECT_TRD_SSE = {
+    "SUR": "SSE/TRD/SUR", "TKWD": "SSE/TRD/SUR", "HG": "SSE/TRD/SUR", "TLT": "SSE/TRD/SUR",
+    "AKOR": "SSE/TRD/SUR", "BALE": "SSE/TRD/SUR", "PK": "SSE/TRD/SUR", "MVE": "SSE/TRD/SUR",
+    "MO": "SSE/TRD/SUR", "HG STN": "SSE/TRD/SUR", "HG-A": "SSE/TRD/SUR",
+    "MOHOL": "SSE/TRD/SUR", "PAKNI": "SSE/TRD/SUR",
+    "NGS": "SSE/TRD/DUD", "BOT": "SSE/TRD/DUD", "DUD": "SSE/TRD/DUD", "KUI": "SSE/TRD/DUD",
+    "GUR": "SSE/TRD/DUD", "SVG": "SSE/TRD/DUD", "HHD": "SSE/TRD/DUD",
+    "BBD": "JE/TRD/KLBG", "KLBG": "JE/TRD/KLBG", "TJSP": "JE/TRD/KLBG", "HQR": "JE/TRD/KLBG",
+    "MR": "JE/TRD/KLBG", "SDB": "JE/TRD/KLBG", "SBD": "JE/TRD/KLBG", "GDGN": "JE/TRD/KLBG",
+    "WADI": "JE/TRD/WADI",
+    "MKPT": "SSE/TRD/KWV", "AAG": "SSE/TRD/KWV", "WKA": "SSE/TRD/KWV", "WDS": "SSE/TRD/KWV",
+    "KWV": "SSE/TRD/KWV", "DHS": "SSE/TRD/KWV", "KEM": "SSE/TRD/KWV", "BLNI": "SSE/TRD/KWV",
+    "WSD": "SSE/TRD/KWV", "MADHA": "SSE/TRD/KWV", "PSS": "SSE/TRD/KWV", "LAUL": "SSE/TRD/KWV",
+    "JEUR": "SSE/TRD/KEU", "PPJ": "SSE/TRD/KEU", "WSB": "SSE/TRD/KEU", "KEU": "SSE/TRD/KEU",
+    "JNTR": "SSE/TRD/KEU", "BGVN": "SSE/TRD/KEU", "MLM": "SSE/TRD/KEU", "BRB": "SSE/TRD/KEU", "DD": "SSE/TRD/KEU",
+    "SEI": "SSE/TRD/BTW", "BTW": "SSE/TRD/BTW", "PJR": "SSE/TRD/BTW", "CNHL": "SSE/TRD/BTW",
+    "MGO": "SSE/TRD/BTW", "UPI": "SSE/TRD/BTW", "KCB": "SSE/TRD/BTW",
+    "DRSV": "SSE/TRD/DRSV", "YSI": "SSE/TRD/DRSV", "DKY": "SSE/TRD/DRSV", "KRMD": "SSE/TRD/DRSV",
+    "OSA": "SSE/TRD/LUR", "HGL": "SSE/TRD/LUR", "LUR": "SSE/TRD/LUR", "MRX": "SSE/TRD/LUR",
+    "LTRR": "SSE/TRD/LUR", "UMD": "SSE/TRD/LUR", "TER": "SSE/TRD/LUR", "PCP": "SSE/TRD/LUR",
+    "NEI": "SSE/TRD/LUR", "BANL": "SSE/TRD/LUR", "GANI": "SSE/TRD/LUR",
+    "MLB": "SSE/TRD/PVR", "PVR": "SSE/TRD/PVR", "BBV": "SSE/TRD/PVR", "AHI": "SSE/TRD/PVR",
+    "SGLA": "SSE/TRD/SGLA", "JTRD": "SSE/TRD/SGLA", "DLGN": "SSE/TRD/SGLA",
+    "MSDG": "SSE/TRD/SGLA", "JVA": "SSE/TRD/SGLA", "GLV": "SSE/TRD/SGLA", "BMNI": "SSE/TRD/SGLA", "BHLI": "SSE/TRD/SGLA",
+    "KVK": "SSE/TRD/SGRE", "SGRE": "SSE/TRD/SGRE", "ARAG": "SSE/TRD/SGRE",
+    "LNP": "SSE/TRD/SGRE", "AGDl": "SSE/TRD/SGRE", "BLNK": "SSE/TRD/SGRE",
+    "BLWD": "SSE/TRD/KWV", "BDK": "SSE/TRD/KWV", "MRJ": "SSE/TRD/KWV",
+}
+
+OPERATING_TI = {
+    "SUR": "TI/SUR/N", "BALE": "TI/SUR/N", "PK": "TI/SUR/N", "MVE": "TI/SUR/N", "MO": "TI/SUR/N",
+    "MKPT": "TI/SUR/N", "AAG": "TI/SUR/N", "WKA": "TI/SUR/N", "MOHOL": "TI/SUR/N", "PAKNI": "TI/SUR/N",
+    "TKWD": "TI/SUR/S", "HG": "TI/SUR/S", "TLT": "TI/SUR/S", "AKOR": "TI/SUR/S",
+    "NGS": "TI/SUR/S", "BOT": "TI/SUR/S", "HG STN": "TI/SUR/S", "HG-A": "TI/SUR/S",
+    "DUD": "TI/KLBG", "KUI": "TI/KLBG", "GUR": "TI/KLBG", "SVG": "TI/KLBG",
+    "BBD": "TI/KLBG", "KLBG": "TI/KLBG", "TJSP": "TI/KLBG", "HHD": "TI/KLBG", "GDGN": "TI/KLBG",
+    "HQR": "TI/WADI", "MR": "TI/WADI", "SDB": "TI/WADI", "WADI": "TI/WADI", "SBD": "TI/WADI",
+    "WDS": "TI/KWV", "KWV": "TI/KWV", "DHS": "TI/KWV", "KEM": "TI/KWV",
+    "BLNI": "TI/KWV", "JEUR": "TI/KWV", "WSD": "TI/KWV", "MADHA": "TI/KWV", "MA": "TI/KWV",
+    "PSS": "TI/KWV", "LAUL": "TI/KWV",
+    "PPJ": "TI/BGVN", "WSB": "TI/BGVN", "KEU": "TI/BGVN", "JNTR": "TI/BGVN",
+    "BGVN": "TI/BGVN", "MLM": "TI/BGVN", "BRB": "TI/BGVN", "DD": "TI/BGVN",
+    "SEI": "TI/LUR", "BTW": "TI/LUR", "PJR": "TI/LUR", "DRSV": "TI/LUR",
+    "YSI": "TI/LUR", "DKY": "TI/LUR", "OSA": "TI/LUR", "HGL": "TI/LUR", "LUR": "TI/LUR",
+    "MRX": "TI/LUR", "LTRR": "TI/LUR", "UMD": "TI/LUR", "CNHL": "TI/LUR", "MGO": "TI/LUR",
+    "UPI": "TI/LUR", "KCB": "TI/LUR", "TER": "TI/LUR", "PCP": "TI/LUR",
+    "NEI": "TI/LUR", "KRMD": "TI/LUR", "BANL": "TI/LUR", "GANI": "TI/LUR",
+    "MLB": "TI/PVR", "PVR": "TI/PVR", "SGLA": "TI/PVR", "JTRD": "TI/PVR",
+    "DLGN": "TI/PVR", "KVK": "TI/PVR", "SGRE": "TI/PVR", "ARAG": "TI/PVR", "MRJ": "TI/PVR",
+    "MSDG": "TI/PVR", "JVA": "TI/PVR", "GLV": "TI/PVR", "LNP": "TI/PVR", "AGDl": "TI/PVR",
+    "BLWD": "TI/PVR", "BDK": "TI/PVR", "BLNK": "TI/PVR", "BBV": "TI/PVR",
+    "AHI": "TI/PVR", "BMNI": "TI/PVR", "BHLI": "TI/PVR",
+}
+
+SNT_ADSTE = {
+    "WADI": "ADSTE/KLBG (WADI-HG)", "SDB": "ADSTE/KLBG (WADI-HG)", "MR": "ADSTE/KLBG (WADI-HG)",
+    "HQR": "ADSTE/KLBG (WADI-HG)", "KLBG": "ADSTE/KLBG (WADI-HG)", "BBD": "ADSTE/KLBG (WADI-HG)",
+    "SVG": "ADSTE/KLBG (WADI-HG)", "HHD": "ADSTE/KLBG (WADI-HG)", "GUR": "ADSTE/KLBG (WADI-HG)",
+    "KUI": "ADSTE/KLBG (WADI-HG)", "DUD": "ADSTE/KLBG (WADI-HG)", "BOT": "ADSTE/KLBG (WADI-HG)",
+    "AKOR": "ADSTE/KLBG (WADI-HG)", "TLT": "ADSTE/KLBG (WADI-HG)", "HG": "ADSTE/KLBG (WADI-HG)",
+    "TJSP": "ADSTE/KLBG (WADI-HG)", "HG STN": "ADSTE/KLBG (WADI-HG)", "HG-A": "ADSTE/KLBG (WADI-HG)",
+    "SBD": "ADSTE/KLBG (WADI-HG)", "GDGN": "ADSTE/KLBG (WADI-HG)", "NGS": "ADSTE/KLBG (WADI-HG)",
+    "TKWD": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)", "SUR": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)",
+    "BALE": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)", "PK": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)",
+    "MVE": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)", "MO": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)",
+    "MKPT": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)", "AAG": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)",
+    "WKA": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)", "MLB": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)",
+    "PVR": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)", "SGLA": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)",
+    "JTRD": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)", "DLGN": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)",
+    "KVK": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)", "SGRE": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)",
+    "ARAG": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)", "MRJ": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)",
+    "MA": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)", "MOHOL": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)",
+    "PAKNI": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)", "MSDG": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)",
+    "JVA": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)", "GLV": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)",
+    "LNP": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)", "AGDl": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)",
+    "BLWD": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)", "BDK": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)",
+    "BLNK": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)", "BBV": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)",
+    "AHI": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)", "BMNI": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)",
+    "BHLI": "ADSTE/SUR (TKWD-MKPT & MLB-MRJ)",
+    "KWV": "ADSTE/KWV-I (KWV-BRB)", "DHS": "ADSTE/KWV-I (KWV-BRB)", "KEM": "ADSTE/KWV-I (KWV-BRB)",
+    "BLNI": "ADSTE/KWV-I (KWV-BRB)", "JEUR": "ADSTE/KWV-I (KWV-BRB)", "PPJ": "ADSTE/KWV-I (KWV-BRB)",
+    "WSB": "ADSTE/KWV-I (KWV-BRB)", "KEU": "ADSTE/KWV-I (KWV-BRB)", "JNTR": "ADSTE/KWV-I (KWV-BRB)",
+    "BGVN": "ADSTE/KWV-I (KWV-BRB)", "MLM": "ADSTE/KWV-I (KWV-BRB)", "BRB": "ADSTE/KWV-I (KWV-BRB)",
+    "WDS": "ADSTE/KWV-I (KWV-BRB)", "WSD": "ADSTE/KWV-I (KWV-BRB)", "DD": "ADSTE/KWV-I (KWV-BRB)",
+    "MADHA": "ADSTE/KWV-I (KWV-BRB)", "PSS": "ADSTE/KWV-I (KWV-BRB)", "LAUL": "ADSTE/KWV-I (KWV-BRB)",
+    "SEI": "ADSTE/KWV-II (LC-34(DKY)-LUR)", "BTW": "ADSTE/KWV-II (LC-34(DKY)-LUR)",
+    "PJR": "ADSTE/KWV-II (LC-34(DKY)-LUR)", "YSI": "ADSTE/KWV-II (LC-34(DKY)-LUR)",
+    "MRX": "ADSTE/KWV-II (LC-34(DKY)-LUR)", "OSA": "ADSTE/KWV-II (LC-34(DKY)-LUR)",
+    "HGL": "ADSTE/KWV-II (LC-34(DKY)-LUR)", "LUR": "ADSTE/KWV-II (LC-34(DKY)-LUR)",
+    "DRSV": "ADSTE/KWV-II (LC-34(DKY)-LUR)", "DKY": "ADSTE/KWV-II (LC-34(DKY)-LUR)",
+    "LTRR": "ADSTE/KWV-II (LC-34(DKY)-LUR)", "UMD": "ADSTE/KWV-II (LC-34(DKY)-LUR)",
+    "CNHL": "ADSTE/KWV-II (LC-34(DKY)-LUR)", "MGO": "ADSTE/KWV-II (LC-34(DKY)-LUR)",
+    "UPI": "ADSTE/KWV-II (LC-34(DKY)-LUR)", "KCB": "ADSTE/KWV-II (LC-34(DKY)-LUR)",
+    "TER": "ADSTE/KWV-II (LC-34(DKY)-LUR)", "PCP": "ADSTE/KWV-II (LC-34(DKY)-LUR)",
+    "NEI": "ADSTE/KWV-II (LC-34(DKY)-LUR)", "KRMD": "ADSTE/KWV-II (LC-34(DKY)-LUR)",
+    "BANL": "ADSTE/KWV-II (LC-34(DKY)-LUR)", "GANI": "ADSTE/KWV-II (LC-34(DKY)-LUR)",
+}
+
+def get_jurisdiction(station, department):
+    if pd.isna(station) or str(station).strip() == "":
+        return "Unclassified"
+    stn = str(station).strip().upper().replace(" ", "")
+    
+    # Normalise common variants
+    if stn in ["HGSTN", "HGA", "HG-A"]:
+        stn = "HG"
+    if stn == "AGDL":
+        stn = "AGDl"
+    dept = str(department).strip().upper() if pd.notna(department) else ""
+    # Special case for OPTG → use Operating mapping
+    if "OPTG" in dept or "OPERATING" in dept:
+        return OPERATING_TI.get(stn, OPERATING_TI.get(station, "Unclassified"))
+    # For all other cases (Attended Only Remark, Others, Failure, Route Stuckup etc.)
+    # Use S&T mapping as default (most relevant for Data Logger)
+    return SNT_ADSTE.get(stn, SNT_ADSTE.get(station, "Unclassified"))
 
 # ====================== SESSION STATE ======================
 if "logged_in" not in st.session_state:
@@ -162,20 +337,23 @@ def load_data_from_gsheet():
         client = gspread.authorize(credentials)
         sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
         df = pd.DataFrame(sheet.get_all_records())
-        
         if df.empty:
             st.error("Google Sheet is empty!")
             st.stop()
-            
         df.columns = df.columns.str.strip()
         df = df.loc[:, ~df.columns.str.lower().str.replace('.', '', regex=False)
                     .str.contains(r'^(?:sl|sr)\s*no', regex=True)]
-       
         if 'FCOUNT' in df.columns:
             df['FCOUNT'] = pd.to_numeric(df['FCOUNT'], errors='coerce').fillna(0).astype(int)
         if 'DATE' in df.columns:
             df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
             df['MONTH'] = df['DATE'].dt.strftime('%B')
+        if 'STATION' in df.columns and 'DEPARTMENT' in df.columns:
+            df['JURISDICTION'] = df.apply(
+                lambda row: get_jurisdiction(row['STATION'], row['DEPARTMENT']), axis=1
+            )
+        else:
+            df['JURISDICTION'] = "Unclassified"
         return df
     except Exception as e:
         st.error(f"Failed to load data: {e}")
@@ -198,272 +376,186 @@ else:
     st.markdown('<p class="subtitle">Central Railway • Solapur Division • Safety Branch</p>', unsafe_allow_html=True)
     st.caption(f"**Logged in as:** {st.session_state.user_name}")
     st.divider()
-    
+
     with st.sidebar:
         st.header("🔧 Controls")
         if st.button("🔄 Refresh Data", type="primary", use_container_width=True):
             refresh_data()
-    
+
     df_original = load_data_from_gsheet()
-    
+
     # ====================== LIVE FILTERS ======================
     st.markdown("### 🔍 Live Filters")
     col_f1 = st.columns([2, 2, 2, 2])
-    
     with col_f1[0]:
         stations = sorted(df_original['STATION'].dropna().unique().tolist()) if 'STATION' in df_original.columns else []
         selected_stations = st.multiselect("STATION", options=stations, default=[], key="stn_key")
-    
-        with col_f1[1]:
-            errors = sorted(df_original['ERROR MAIN CATEGORY'].dropna().unique().tolist()) if 'ERROR MAIN CATEGORY' in df_original.columns else []
-            selected_errors = st.multiselect("ERROR MAIN CATEGORY", options=errors, default=[], key="err_key")
-        
-        with col_f1[2]:
-            categories = sorted(df_original['DEPARTMENT'].dropna().unique().tolist()) if 'DEPARTMENT' in df_original.columns else []
-            selected_categories = st.multiselect("DEPARTMENT", options=categories, default=[], key="cat_key")
-        
-        with col_f1[3]:
-            months = sorted(df_original['MONTH'].dropna().unique().tolist()) if 'MONTH' in df_original.columns else []
-            selected_months = st.multiselect("MONTH", options=months, default=[], key="month_key")
+    with col_f1[1]:
+        errors = sorted(df_original['ERROR MAIN CATEGORY'].dropna().unique().tolist()) if 'ERROR MAIN CATEGORY' in df_original.columns else []
+        selected_errors = st.multiselect("ERROR MAIN CATEGORY", options=errors, default=[], key="err_key")
+    with col_f1[2]:
+        categories = sorted(df_original['DEPARTMENT'].dropna().unique().tolist()) if 'DEPARTMENT' in df_original.columns else []
+        selected_categories = st.multiselect("DEPARTMENT", options=categories, default=[], key="cat_key")
+    with col_f1[3]:
+        months = sorted(df_original['MONTH'].dropna().unique().tolist()) if 'MONTH' in df_original.columns else []
+        selected_months = st.multiselect("MONTH", options=months, default=[], key="month_key")
+
     col_f2 = st.columns([2, 2, 2, 2])
-    
     with col_f2[0]:
         fcount_list = sorted(df_original['FCOUNT'].dropna().unique().tolist()) if 'FCOUNT' in df_original.columns else []
         selected_fcount = st.multiselect("FCOUNT", options=fcount_list, default=[], key="fcount_key")
-    
     with col_f2[1]:
         fault_list = sorted(df_original['DL FAULT MESSAGE'].dropna().unique().tolist()) if 'DL FAULT MESSAGE' in df_original.columns else []
         selected_fault = st.multiselect("DL FAULT MESSAGE", options=fault_list, default=[], key="fault_key")
-    
     with col_f2[2]:
         remark_list = sorted(df_original['REMARKS GIVEN BY S&T'].dropna().unique().tolist()) if 'REMARKS GIVEN BY S&T' in df_original.columns else []
         selected_remark = st.multiselect("REMARKS GIVEN BY S&T", options=remark_list, default=[], key="remark_key")
-    
     with col_f2[3]:
-        time_list = sorted(df_original['TIMEDETAILS'].dropna().unique().tolist()) if 'TIMEDETAILS' in df_original.columns else []
-        selected_time = st.multiselect("TIMEDETAILS", options=time_list, default=[], key="time_key")
-    
+        jurisdictions = sorted(df_original['JURISDICTION'].dropna().unique().tolist()) if 'JURISDICTION' in df_original.columns else []
+        selected_jurisdictions = st.multiselect("JURISDICTION", options=jurisdictions, default=[], key="jur_key")
+
     col_date = st.columns([2, 2, 1])
     with col_date[0]:
         min_date = df_original['DATE'].min().date() if (not df_original.empty and 'DATE' in df_original.columns and pd.notna(df_original['DATE'].min())) else pd.Timestamp.now().date()
         from_date = st.date_input("FROM DATE", value=min_date, key="from_date_key")
-    
     with col_date[1]:
         max_date = df_original['DATE'].max().date() if (not df_original.empty and 'DATE' in df_original.columns and pd.notna(df_original['DATE'].max())) else pd.Timestamp.now().date()
         to_date = st.date_input("TO DATE", value=max_date, key="to_date_key")
-    
+
     st.divider()
-    
+
     # ====================== APPLY FILTERS ======================
     filtered_df = df_original.copy()
-    
     if 'DATE' in filtered_df.columns:
         filtered_df = filtered_df[
             (filtered_df['DATE'].dt.date >= from_date) &
             (filtered_df['DATE'].dt.date <= to_date)
         ]
-    
     if selected_stations:
         filtered_df = filtered_df[filtered_df['STATION'].isin(selected_stations)]
-    
     if selected_errors and 'ERROR MAIN CATEGORY' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['ERROR MAIN CATEGORY'].isin(selected_errors)]
-    
     if selected_categories and 'DEPARTMENT' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['DEPARTMENT'].isin(selected_categories)]
-    
     if selected_months and 'MONTH' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['MONTH'].isin(selected_months)]
-    
     if selected_fcount and 'FCOUNT' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['FCOUNT'].isin(selected_fcount)]
-    
     if selected_fault and 'DL FAULT MESSAGE' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['DL FAULT MESSAGE'].isin(selected_fault)]
-    
     if selected_remark and 'REMARKS GIVEN BY S&T' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['REMARKS GIVEN BY S&T'].isin(selected_remark)]
-    
-    if selected_time and 'TIMEDETAILS' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['TIMEDETAILS'].isin(selected_time)]
-    
-    # Map Selection Override
+        filtered_df = filtered_df[filtered_df['DL FAULT MESSAGE'].isin(selected_remark)]
+    if selected_jurisdictions and 'JURISDICTION' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['JURISDICTION'].isin(selected_jurisdictions)]
     if st.session_state.map_selected_station:
         filtered_df = filtered_df[filtered_df['STATION'] == st.session_state.map_selected_station]
-    
+
+    # ====================== PRE-COMPUTE SUMMARIES ======================
+    cat_sum = pd.DataFrame()
+    error_sum = pd.DataFrame()
+    jur_sum = pd.DataFrame()
+    if not filtered_df.empty:
+        if 'DEPARTMENT' in filtered_df.columns:
+            cat_sum = (filtered_df.groupby('DEPARTMENT').size().reset_index(name='Cases').sort_values('Cases', ascending=False))
+        if 'ERROR MAIN CATEGORY' in filtered_df.columns:
+            error_sum = (filtered_df.groupby('ERROR MAIN CATEGORY').size().reset_index(name='Cases').sort_values('Cases', ascending=False))
+        if 'JURISDICTION' in filtered_df.columns:
+            jur_sum = (filtered_df.groupby('JURISDICTION').size().reset_index(name='Cases').sort_values('Cases', ascending=False))
+
     st.divider()
-    
+
     # ====================== TABS ======================
     tab_overview, tab_map = st.tabs(["📊 Overview Dashboard", "🗺️ Map View"])
-    
+
     with tab_overview:
         st.subheader("📊 Overview Dashboard")
-        
-        # ====================== METRICS ======================
         c1, c2, c3, c4 = st.columns(4)
-        
-        with c1: 
+        with c1:
             st.metric("Total Records", f"{len(filtered_df):,}")
-        
-        with c2: 
-            st.metric("Total FCOUNT (All Stations)", 
-                     f"{filtered_df.get('FCOUNT', pd.Series(0)).sum():,}")
-        
+        with c2:
+            st.metric("Total FCOUNT", f"{filtered_df.get('FCOUNT', pd.Series(0)).sum():,}")
         with c3:
             if not filtered_df.empty and 'STATION' in filtered_df.columns:
                 station_totals = filtered_df.groupby('STATION')['FCOUNT'].sum().sort_values(ascending=False)
-                
-                if not station_totals.empty:
-                    top_station = station_totals.index[0]
-                    st.metric("⚠️ Top Station", top_station)
-                else:
-                    st.metric("⚠️ Top Station", "N/A")
+                top_station = station_totals.index[0] if not station_totals.empty else "N/A"
+                st.metric("⚠️ Top Station", top_station)
             else:
                 st.metric("⚠️ Top Station", "N/A")
-        
         with c4:
             if not filtered_df.empty and 'STATION' in filtered_df.columns:
                 station_totals = filtered_df.groupby('STATION')['FCOUNT'].sum().sort_values(ascending=False)
-                
-                if not station_totals.empty:
-                    top_fcount = station_totals.iloc[0]
-                    st.metric("Top Station FCOUNT", f"{top_fcount:,}")
-                else:
-                    st.metric("Top Station FCOUNT", "0")
+                top_fcount = station_totals.iloc[0] if not station_totals.empty else 0
+                st.metric("Top Station FCOUNT", f"{top_fcount:,}")
             else:
                 st.metric("Top Station FCOUNT", "0")
-        
+
         st.markdown("---")
-        
         col_g1, col_g2 = st.columns([3, 2])
-        
         with col_g1:
             st.markdown('<p class="section-header">Top 15 Stations by FCOUNT</p>', unsafe_allow_html=True)
-            if not filtered_df.empty:
+            if not filtered_df.empty and 'STATION' in filtered_df.columns:
                 top15 = filtered_df.groupby('STATION')['FCOUNT'].sum().nlargest(15).reset_index()
-                fig = px.bar(top15, x='STATION', y='FCOUNT', text='FCOUNT',
-                             color='FCOUNT', color_continuous_scale='RdYlGn_r')
+                fig = px.bar(top15, x='STATION', y='FCOUNT', text='FCOUNT', color='FCOUNT', color_continuous_scale='RdYlGn_r')
                 fig.update_layout(height=520, xaxis_tickangle=45)
                 st.plotly_chart(fig, use_container_width=True)
-        
         with col_g2:
             st.markdown('<p class="section-header">Station Summary</p>', unsafe_allow_html=True)
-            if not filtered_df.empty:
-                summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
-                    Total_FCOUNT='sum', Records='count'
-                ).sort_values('Total_FCOUNT', ascending=False)
-                st.dataframe(summary.style.format({"Total_FCOUNT": "{:,}", "Records": "{:,}"})
-                            .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
-                            use_container_width=True)
-        
-        # Error & Category Summary (Category on left, Error on right)
-        col_s1, col_s2 = st.columns(2)
-        
+            if not filtered_df.empty and 'STATION' in filtered_df.columns:
+                summary = filtered_df.groupby('STATION')['FCOUNT'].agg(Total_FCOUNT='sum', Records='count').sort_values('Total_FCOUNT', ascending=False)
+                st.dataframe(summary.style.format({"Total_FCOUNT": "{:,}", "Records": "{:,}"}).background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'), use_container_width=True)
 
-# ====================== CATEGORY SUMMARY ======================
-       # ====================== CATEGORY SUMMARY ======================
+        col_s1, col_s2, col_s3 = st.columns(3)
         with col_s1:
-            if 'DEPARTMENT' in filtered_df.columns and not filtered_df.empty:
-                st.markdown(
-                    '<p class="section-header">DEPARTMENT</p>',
-                    unsafe_allow_html=True
-                )
-        
-                cat_sum = (
-                    filtered_df.groupby('DEPARTMENT')
-                    .size()
-                    .reset_index(name='Cases')
-                    .sort_values('Cases', ascending=False)
-                )
-        
-                st.dataframe(
-                    cat_sum.style
-                    .format({"Cases": "{:,}"})
-                    .set_table_styles([
-                        {
-                            'selector': 'thead th',
-                            'props': [
-                                ('background-color', '#E8EEF7'),
-                                ('color', '#1F2937'),
-                                ('font-weight', 'bold'),
-                                ('border-bottom', '2px solid #B8C7DC')
-                            ]
-                        }
-                    ]),
-                    use_container_width=True,
-                    hide_index=True
-                )
-        
-        
-        # ====================== ERROR SUMMARY ======================
+            if not cat_sum.empty:
+                st.markdown('<p class="section-header">DEPARTMENT</p>', unsafe_allow_html=True)
+                st.dataframe(cat_sum.style.format({"Cases": "{:,}"}), use_container_width=True, hide_index=True)
         with col_s2:
-            if 'ERROR MAIN CATEGORY' in filtered_df.columns and not filtered_df.empty:
-                st.markdown(
-                    '<p class="section-header">ERROR MAIN CATEGORY</p>',
-                    unsafe_allow_html=True
-                )
-        
-                error_sum = (
-                    filtered_df.groupby('ERROR MAIN CATEGORY')
-                    .size()
-                    .reset_index(name='Cases')
-                    .sort_values('Cases', ascending=False)
-                )
-        
-                st.dataframe(
-                    error_sum.style
-                    .format({"Cases": "{:,}"})
-                    .set_table_styles([
-                        {
-                            'selector': 'thead th',
-                            'props': [ ('background-color', '#E8EEF7'), ('color', '#000000'), ('font-weight', 'bold'), ('border-bottom', '2px solid #B8C7DC') ]
-                        }
-                    ]),
-                    use_container_width=True,
-                    hide_index=True
-                )        
+            if not error_sum.empty:
+                st.markdown('<p class="section-header">ERROR MAIN CATEGORY</p>', unsafe_allow_html=True)
+                st.dataframe(error_sum.style.format({"Cases": "{:,}"}), use_container_width=True, hide_index=True)
+        with col_s3:
+            if not jur_sum.empty:
+                st.markdown('<p class="section-header">JURISDICTION</p>', unsafe_allow_html=True)
+                st.dataframe(jur_sum.style.format({"Cases": "{:,}"}), use_container_width=True, hide_index=True)
+
         st.markdown("---")
         st.markdown('<p class="section-header">Detailed Records</p>', unsafe_allow_html=True)
-        
         if filtered_df.empty:
             st.warning("No records found.")
         else:
             display_df = filtered_df.copy()
             if 'DATE' in display_df.columns:
                 display_df['DATE'] = display_df['DATE'].dt.date
-            st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}), use_container_width=True, hide_index=True)
-            
-            # Download Section
+            preferred_order = ['DATE', 'STATION', 'DEPARTMENT', 'JURISDICTION', 'ERROR MAIN CATEGORY',
+                               'DL FAULT MESSAGE', 'FCOUNT', 'REMARKS GIVEN BY S&T', 'TIMEDETAILS']
+            cols = [c for c in preferred_order if c in display_df.columns] + [c for c in display_df.columns if c not in preferred_order]
+            st.dataframe(display_df[cols].style.format({"FCOUNT": "{:,}"}), use_container_width=True, hide_index=True)
+
+            # ====================== DOWNLOAD ======================
             st.markdown("---")
             col_btn1, col_btn2, col_btn3 = st.columns([1, 3, 1])
             with col_btn2:
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                     display_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
-                    
-                    station_summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
-                        Total_FCOUNT='sum', Record_Count='count'
-                    ).sort_values('Total_FCOUNT', ascending=False).reset_index()
-                    station_summary.to_excel(writer, index=False, sheet_name='Station_Summary')
-                    
-                    if 'ERROR MAIN CATEGORY' in filtered_df.columns:
+                    if 'STATION' in filtered_df.columns:
+                        station_summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
+                            Total_FCOUNT='sum', Record_Count='count'
+                        ).sort_values('Total_FCOUNT', ascending=False).reset_index()
+                        station_summary.to_excel(writer, index=False, sheet_name='Station_Summary')
+                    if not error_sum.empty:
                         error_sum.to_excel(writer, index=False, sheet_name='Error_Summary')
-                    if 'DEPARTMENT' in filtered_df.columns:
+                    if not cat_sum.empty:
                         cat_sum.to_excel(writer, index=False, sheet_name='Category_Summary')
-                    
-                    for sheet_name, df_sheet in [('Filtered_Records', display_df), ('Station_Summary', station_summary)]:
-                        if sheet_name in writer.sheets:
-                            worksheet = writer.sheets[sheet_name]
-                            header_format = writer.book.add_format({
-                                'bold': True, 'bg_color': '#003087', 'font_color': 'white',
-                                'border': 1, 'align': 'center', 'valign': 'vcenter'
-                            })
-                            for col_num, value in enumerate(df_sheet.columns.values):
-                                worksheet.write(0, col_num, value, header_format)
-                            for idx, col in enumerate(df_sheet.columns):
-                                max_len = max(df_sheet[col].astype(str).map(len).max(), len(str(col))) + 5
-                                worksheet.set_column(idx, idx, min(max_len, 60))
-                
+                    if not jur_sum.empty:
+                        jur_sum.to_excel(writer, index=False, sheet_name='Jurisdiction_Summary')
+                    # Unclassified sheet only if exists
+                    if 'JURISDICTION' in filtered_df.columns:
+                        unclass_df = filtered_df[filtered_df['JURISDICTION'] == 'Unclassified'].copy()
+                        if not unclass_df.empty:
+                            if 'DATE' in unclass_df.columns:
+                                unclass_df['DATE'] = pd.to_datetime(unclass_df['DATE'], errors='coerce').dt.date
+                            unclass_df.to_excel(writer, index=False, sheet_name='Unclassified_Records')
                 output.seek(0)
                 st.download_button(
                     label="⬇️ Download Professional Excel Report",
@@ -473,8 +565,7 @@ else:
                     type="primary",
                     use_container_width=True
                 )
-    
-    # ====================== MAP TAB ======================
+
     with tab_map:
         st.subheader("🗺️ Interactive Map View - Click on Station to Filter")
        
@@ -520,7 +611,7 @@ else:
                         m = folium.Map(
                             location=[17.85, 75.80],
                             zoom_start=7.2,
-                            tiles=None,                 # keep this
+                            tiles=None,
                             control_scale=True,
                             zoom_control=True
                         )
@@ -600,101 +691,51 @@ else:
                             if st.session_state.map_selected_station != selected_station:
                                 st.session_state.map_selected_station = selected_station
                                 st.rerun()
-        
+
         with col_m2:
             st.subheader("Station Summary")
-            if not filtered_df.empty:
-                summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
-                    Total_FCOUNT='sum', Records='count'
-                ).sort_values('Total_FCOUNT', ascending=False)
-                st.dataframe(summary.style.format({"Total_FCOUNT": "{:,}", "Records": "{:,}"})
-                            .background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'),
-                            use_container_width=True)
-            
+            if not filtered_df.empty and 'STATION' in filtered_df.columns:
+                summary = filtered_df.groupby('STATION')['FCOUNT'].agg(Total_FCOUNT='sum', Records='count').sort_values('Total_FCOUNT', ascending=False)
+                st.dataframe(summary.style.format({"Total_FCOUNT": "{:,}", "Records": "{:,}"}).background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'), use_container_width=True)
             st.markdown("---")
-            st.subheader("Error & Category Summary")
-            
-            col_s1, col_s2 = st.columns(2)
-            
-            with col_s1:
-                if 'DEPARTMENT' in filtered_df.columns and not filtered_df.empty:
-                    st.markdown("**Category Summary**")
-                    cat_sum = (
-                        filtered_df.groupby('DEPARTMENT')
-                        .size()
-                        .reset_index(name='Cases')
-                        .sort_values('Cases', ascending=False)
-                    )
-                    st.dataframe(
-                        cat_sum.style.format({"Cases": "{:,}"}),
-                        use_container_width=True,
-                        hide_index=True
-                    )
-            
-            with col_s2:
-                if 'ERROR MAIN CATEGORY' in filtered_df.columns and not filtered_df.empty:
-                    st.markdown("**ERROR MAIN CATEGORY**")
-                    error_sum = (
-                        filtered_df.groupby('ERROR MAIN CATEGORY')
-                        .size()
-                        .reset_index(name='Cases')
-                        .sort_values('Cases', ascending=False)
-                    )
-                    st.dataframe(
-                        error_sum.style.format({"Cases": "{:,}"}),
-                        use_container_width=True,
-                        hide_index=True
-                    )
-        
+            st.subheader("Jurisdiction Summary")
+            if not jur_sum.empty:
+                st.dataframe(jur_sum.style.format({"Cases": "{:,}"}), use_container_width=True, hide_index=True)
+
         st.markdown("---")
         st.subheader("Detailed Records")
-        
         if filtered_df.empty:
             st.warning("No records found.")
         else:
             display_df = filtered_df.copy()
             if 'DATE' in display_df.columns:
                 display_df['DATE'] = display_df['DATE'].dt.date
-            st.dataframe(display_df.style.format({"FCOUNT": "{:,}"}), use_container_width=True, hide_index=True)
-            
+            preferred_order = ['DATE', 'STATION', 'DEPARTMENT', 'JURISDICTION', 'ERROR MAIN CATEGORY', 'DL FAULT MESSAGE', 'FCOUNT', 'REMARKS GIVEN BY S&T']
+            cols = [c for c in preferred_order if c in display_df.columns] + [c for c in display_df.columns if c not in preferred_order]
+            st.dataframe(display_df[cols].style.format({"FCOUNT": "{:,}"}), use_container_width=True, hide_index=True)
+
             st.markdown("---")
             col_btn1, col_btn2, col_btn3 = st.columns([1, 3, 1])
             with col_btn2:
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                     display_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
-                    
-                    station_summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
-                        Total_FCOUNT='sum', Record_Count='count'
-                    ).sort_values('Total_FCOUNT', ascending=False).reset_index()
-                    station_summary.to_excel(writer, index=False, sheet_name='Station_Summary')
-                    
-                    if 'ERROR MAIN CATEGORY' in filtered_df.columns:
-                        error_sum.to_excel(writer, index=False, sheet_name='Error_Summary')
-                    if 'DEPARTMENT' in filtered_df.columns:
-                        cat_sum.to_excel(writer, index=False, sheet_name='Category_Summary')
-                    
-                    for sheet_name, df_sheet in [('Filtered_Records', display_df), ('Station_Summary', station_summary)]:
-                        if sheet_name in writer.sheets:
-                            worksheet = writer.sheets[sheet_name]
-                            header_format = writer.book.add_format({
-                                'bold': True, 'bg_color': '#003087', 'font_color': 'white',
-                                'border': 1, 'align': 'center', 'valign': 'vcenter'
-                            })
-                            for col_num, value in enumerate(df_sheet.columns.values):
-                                worksheet.write(0, col_num, value, header_format)
-                            for idx, col in enumerate(df_sheet.columns):
-                                max_len = max(df_sheet[col].astype(str).map(len).max(), len(str(col))) + 5
-                                worksheet.set_column(idx, idx, min(max_len, 60))
-                
+                    if not jur_sum.empty:
+                        jur_sum.to_excel(writer, index=False, sheet_name='Jurisdiction_Summary')
+                    if 'JURISDICTION' in filtered_df.columns:
+                        unclass_df = filtered_df[filtered_df['JURISDICTION'] == 'Unclassified'].copy()
+                        if not unclass_df.empty:
+                            if 'DATE' in unclass_df.columns:
+                                unclass_df['DATE'] = pd.to_datetime(unclass_df['DATE'], errors='coerce').dt.date
+                            unclass_df.to_excel(writer, index=False, sheet_name='Unclassified_Records')
                 output.seek(0)
                 st.download_button(
-                    label="⬇️ Download Professional Excel Report",
+                    label="⬇️ Download Map Filtered Report",
                     data=output.getvalue(),
                     file_name=f"Map_Filtered_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
                     use_container_width=True
                 )
-    
+
     st.caption("🚄 Safety Branch | Central Railway, Solapur Division")
