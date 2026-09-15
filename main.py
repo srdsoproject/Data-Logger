@@ -291,26 +291,17 @@ def get_jurisdiction(station, department):
         return "Unclassified"
     stn = str(station).strip().upper().replace(" ", "")
     
-    # Normalise common variants
     if stn in ["HGSTN", "HGA", "HG-A"]:
         stn = "HG"
     if stn == "AGDL":
         stn = "AGDl"
     dept = str(department).strip().upper() if pd.notna(department) else ""
-    # Special case for OPTG → use Operating mapping
     if "OPTG" in dept or "OPERATING" in dept:
         return OPERATING_TI.get(stn, OPERATING_TI.get(station, "Unclassified"))
-    # For all other cases (Attended Only Remark, Others, Failure, Route Stuckup etc.)
-    # Use S&T mapping as default (most relevant for Data Logger)
     return SNT_ADSTE.get(stn, SNT_ADSTE.get(station, "Unclassified"))
 
 # ====================== HELPER: SYSTEMATIC SORT ======================
 def sort_systematically(df: pd.DataFrame) -> pd.DataFrame:
-    """Sort dataframe systematically for reports:
-       1. DATE (newest first)
-       2. STATION (A→Z)
-       3. FCOUNT (highest first)
-    """
     if df.empty:
         return df
     sort_cols = []
@@ -327,6 +318,109 @@ def sort_systematically(df: pd.DataFrame) -> pd.DataFrame:
     if sort_cols:
         return df.sort_values(by=sort_cols, ascending=ascending, kind='mergesort').reset_index(drop=True)
     return df.reset_index(drop=True)
+
+# ====================== HELPER: PROFESSIONAL EXCEL FORMATTING ======================
+def write_formatted_sheet(writer, df, sheet_name, preferred_order=None):
+    """Write DataFrame with professional formatting:
+       - Bold dark-blue header
+       - Text wrap
+       - All borders
+       - Proper alignment
+       - Auto column width
+       - Frozen header row
+    """
+    if df.empty:
+        return
+
+    if preferred_order:
+        cols = [c for c in preferred_order if c in df.columns] + \
+               [c for c in df.columns if c not in preferred_order]
+        df = df[cols]
+
+    df.to_excel(writer, index=False, sheet_name=sheet_name)
+    workbook  = writer.book
+    worksheet = writer.sheets[sheet_name]
+
+    # Formats
+    header_fmt = workbook.add_format({
+        'bold': True,
+        'text_wrap': True,
+        'valign': 'vcenter',
+        'align': 'center',
+        'border': 1,
+        'bg_color': '#003087',
+        'font_color': 'white',
+        'font_size': 11
+    })
+
+    cell_fmt = workbook.add_format({
+        'text_wrap': True,
+        'valign': 'vcenter',
+        'align': 'left',
+        'border': 1,
+        'font_size': 10
+    })
+
+    center_fmt = workbook.add_format({
+        'text_wrap': True,
+        'valign': 'vcenter',
+        'align': 'center',
+        'border': 1,
+        'font_size': 10
+    })
+
+    number_fmt = workbook.add_format({
+        'text_wrap': True,
+        'valign': 'vcenter',
+        'align': 'center',
+        'border': 1,
+        'font_size': 10,
+        'num_format': '#,##0'
+    })
+
+    date_fmt = workbook.add_format({
+        'text_wrap': True,
+        'valign': 'vcenter',
+        'align': 'center',
+        'border': 1,
+        'font_size': 10,
+        'num_format': 'dd-mmm-yyyy'
+    })
+
+    # Header
+    for col_num, value in enumerate(df.columns.values):
+        worksheet.write(0, col_num, value, header_fmt)
+
+    # Data rows + column width
+    for col_num, col_name in enumerate(df.columns):
+        col_upper = str(col_name).upper()
+
+        if col_upper in ['FCOUNT', 'TOTAL_FCOUNT', 'RECORD_COUNT', 'CASES', 'RECORDS']:
+            fmt = number_fmt
+        elif col_upper == 'DATE':
+            fmt = date_fmt
+        elif col_upper in ['STATION', 'DEPARTMENT', 'JURISDICTION', 'ERROR MAIN CATEGORY']:
+            fmt = center_fmt
+        else:
+            fmt = cell_fmt
+
+        for row_num in range(1, len(df) + 1):
+            value = df.iloc[row_num - 1, col_num]
+            if pd.isna(value):
+                worksheet.write(row_num, col_num, "", fmt)
+            else:
+                worksheet.write(row_num, col_num, value, fmt)
+
+        # Auto width with sensible limits
+        max_len = max(
+            df[col_name].astype(str).map(len).max() if not df.empty else 0,
+            len(str(col_name))
+        )
+        worksheet.set_column(col_num, col_num, min(max(max_len + 2, 12), 45))
+
+    # Freeze header
+    worksheet.freeze_panes(1, 0)
+    worksheet.set_row(0, 30)
 
 # ====================== SESSION STATE ======================
 if "logged_in" not in st.session_state:
@@ -468,7 +562,7 @@ else:
     if selected_fault and 'DL FAULT MESSAGE' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['DL FAULT MESSAGE'].isin(selected_fault)]
     if selected_remark and 'REMARKS GIVEN BY S&T' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['REMARKS GIVEN BY S&T'].isin(selected_remark)]  # FIXED
+        filtered_df = filtered_df[filtered_df['REMARKS GIVEN BY S&T'].isin(selected_remark)]
     if selected_jurisdictions and 'JURISDICTION' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['JURISDICTION'].isin(selected_jurisdictions)]
     if st.session_state.map_selected_station:
@@ -547,9 +641,10 @@ else:
         if filtered_df.empty:
             st.warning("No records found.")
         else:
-            display_df = sort_systematically(filtered_df.copy())   # ← SORTED
+            display_df = sort_systematically(filtered_df.copy())
             if 'DATE' in display_df.columns:
                 display_df['DATE'] = display_df['DATE'].dt.date
+
             preferred_order = ['DATE', 'STATION', 'DEPARTMENT', 'JURISDICTION', 'ERROR MAIN CATEGORY',
                                'DL FAULT MESSAGE', 'FCOUNT', 'REMARKS GIVEN BY S&T', 'TIMEDETAILS']
             cols = [c for c in preferred_order if c in display_df.columns] + [c for c in display_df.columns if c not in preferred_order]
@@ -561,33 +656,34 @@ else:
             with col_btn2:
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    # Main filtered data – already sorted
-                    display_df[cols].to_excel(writer, index=False, sheet_name='Filtered_Records')
+
+                    preferred_order = ['DATE', 'STATION', 'DEPARTMENT', 'JURISDICTION',
+                                       'ERROR MAIN CATEGORY', 'DL FAULT MESSAGE',
+                                       'FCOUNT', 'REMARKS GIVEN BY S&T', 'TIMEDETAILS']
+
+                    write_formatted_sheet(writer, display_df, 'Filtered_Records', preferred_order)
 
                     if 'STATION' in filtered_df.columns:
                         station_summary = (filtered_df.groupby('STATION')['FCOUNT']
                                            .agg(Total_FCOUNT='sum', Record_Count='count')
                                            .sort_values('Total_FCOUNT', ascending=False)
                                            .reset_index())
-                        station_summary.to_excel(writer, index=False, sheet_name='Station_Summary')
+                        write_formatted_sheet(writer, station_summary, 'Station_Summary')
 
                     if not error_sum.empty:
-                        error_sum.to_excel(writer, index=False, sheet_name='Error_Summary')
+                        write_formatted_sheet(writer, error_sum, 'Error_Summary')
                     if not cat_sum.empty:
-                        cat_sum.to_excel(writer, index=False, sheet_name='Category_Summary')
+                        write_formatted_sheet(writer, cat_sum, 'Category_Summary')
                     if not jur_sum.empty:
-                        jur_sum.to_excel(writer, index=False, sheet_name='Jurisdiction_Summary')
+                        write_formatted_sheet(writer, jur_sum, 'Jurisdiction_Summary')
 
-                    # Unclassified sheet – also sorted
                     if 'JURISDICTION' in filtered_df.columns:
                         unclass_df = filtered_df[filtered_df['JURISDICTION'] == 'Unclassified'].copy()
                         if not unclass_df.empty:
                             unclass_df = sort_systematically(unclass_df)
                             if 'DATE' in unclass_df.columns:
                                 unclass_df['DATE'] = pd.to_datetime(unclass_df['DATE'], errors='coerce').dt.date
-                            unclass_cols = [c for c in preferred_order if c in unclass_df.columns] + \
-                                           [c for c in unclass_df.columns if c not in preferred_order]
-                            unclass_df[unclass_cols].to_excel(writer, index=False, sheet_name='Unclassified_Records')
+                            write_formatted_sheet(writer, unclass_df, 'Unclassified_Records', preferred_order)
 
                 output.seek(0)
                 st.download_button(
@@ -602,7 +698,6 @@ else:
     with tab_map:
         st.subheader("🗺️ Interactive Map View - Click on Station to Filter")
        
-        # Clear Selection
         if st.session_state.map_selected_station:
             col_clear1, col_clear2 = st.columns([1, 5])
             with col_clear1:
@@ -649,7 +744,6 @@ else:
                             zoom_control=True
                         )
                     
-                        # ---- CartoDB with API key from secrets ----
                         carto_key = st.secrets["carto"]["api_key"]
                         folium.TileLayer(
                             tiles=f"https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}.png?key={carto_key}",
@@ -660,7 +754,6 @@ else:
                             max_zoom=20
                         ).add_to(m)
                     
-                        # ---- Other free layers (no key needed) ----
                         folium.TileLayer("OpenStreetMap", name="🌍 OpenStreetMap", control=True).add_to(m)
                         folium.TileLayer(
                             tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -684,7 +777,6 @@ else:
                         folium.LayerControl(position="topright", collapsed=False).add_to(m)
                         folium.plugins.Fullscreen().add_to(m)
                        
-                        # ================== FIXED THRESHOLD COLOR SCHEME ==================
                         for _, row in map_df.iterrows():
                             fcount = int(row['FCOUNT'])
                             
@@ -740,9 +832,10 @@ else:
         if filtered_df.empty:
             st.warning("No records found.")
         else:
-            display_df = sort_systematically(filtered_df.copy())   # ← SORTED
+            display_df = sort_systematically(filtered_df.copy())
             if 'DATE' in display_df.columns:
                 display_df['DATE'] = display_df['DATE'].dt.date
+
             preferred_order = ['DATE', 'STATION', 'DEPARTMENT', 'JURISDICTION', 'ERROR MAIN CATEGORY',
                                'DL FAULT MESSAGE', 'FCOUNT', 'REMARKS GIVEN BY S&T']
             cols = [c for c in preferred_order if c in display_df.columns] + [c for c in display_df.columns if c not in preferred_order]
@@ -753,11 +846,15 @@ else:
             with col_btn2:
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    # Main filtered data – already sorted
-                    display_df[cols].to_excel(writer, index=False, sheet_name='Filtered_Records')
+
+                    preferred_order = ['DATE', 'STATION', 'DEPARTMENT', 'JURISDICTION',
+                                       'ERROR MAIN CATEGORY', 'DL FAULT MESSAGE',
+                                       'FCOUNT', 'REMARKS GIVEN BY S&T']
+
+                    write_formatted_sheet(writer, display_df, 'Filtered_Records', preferred_order)
 
                     if not jur_sum.empty:
-                        jur_sum.to_excel(writer, index=False, sheet_name='Jurisdiction_Summary')
+                        write_formatted_sheet(writer, jur_sum, 'Jurisdiction_Summary')
 
                     if 'JURISDICTION' in filtered_df.columns:
                         unclass_df = filtered_df[filtered_df['JURISDICTION'] == 'Unclassified'].copy()
@@ -765,9 +862,7 @@ else:
                             unclass_df = sort_systematically(unclass_df)
                             if 'DATE' in unclass_df.columns:
                                 unclass_df['DATE'] = pd.to_datetime(unclass_df['DATE'], errors='coerce').dt.date
-                            unclass_cols = [c for c in preferred_order if c in unclass_df.columns] + \
-                                           [c for c in unclass_df.columns if c not in preferred_order]
-                            unclass_df[unclass_cols].to_excel(writer, index=False, sheet_name='Unclassified_Records')
+                            write_formatted_sheet(writer, unclass_df, 'Unclassified_Records', preferred_order)
 
                 output.seek(0)
                 st.download_button(
