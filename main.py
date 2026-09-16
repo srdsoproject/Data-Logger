@@ -1,18 +1,22 @@
 import pandas as pd
+import numpy as np
 import streamlit as st
 import plotly.express as px
+import plotly.graph_objects as go
 from io import BytesIO
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import folium
 from streamlit_folium import st_folium
 from folium.plugins import Fullscreen
-import re
-from difflib import SequenceMatcher
-import json
-import signal
-import platform
-from typing import Optional
+
+# Optional: statsmodels gives proper exponential-smoothing models.
+# If it is not installed the app silently falls back to a linear-trend model.
+try:
+    from statsmodels.tsa.holtwinters import ExponentialSmoothing
+    STATSMODELS_AVAILABLE = True
+except Exception:
+    STATSMODELS_AVAILABLE = False
 
 # ====================== PAGE CONFIG ======================
 st.set_page_config(
@@ -46,77 +50,6 @@ st.markdown("""
         font-weight: 600; 
         color: #003087; 
         margin: 1.2rem 0 0.5rem 0; 
-    }
-    .alert-box {
-        background-color: #ff4b4b;
-        color: white;
-        padding: 15px 20px;
-        border-radius: 10px;
-        font-size: 1.15rem;
-        font-weight: 600;
-        margin-bottom: 20px;
-        text-align: center;
-    }
-    .chatbot-header {
-        background: linear-gradient(135deg, #003087, #0056b3);
-        color: white;
-        padding: 14px 18px;
-        border-radius: 14px 14px 0 0;
-        font-size: 1.15rem;
-        font-weight: 600;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 0;
-        box-shadow: 0 4px 12px rgba(0,48,135,0.25);
-    }
-    .chatbot-header span {
-        background: rgba(255,255,255,0.2);
-        padding: 4px 10px;
-        border-radius: 20px;
-        font-size: 0.75rem;
-        font-weight: 500;
-    }
-    .chat-container {
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-top: none;
-        border-radius: 0 0 14px 14px;
-        padding: 16px 14px;
-        max-height: 420px;
-        overflow-y: auto;
-        margin-bottom: 12px;
-    }
-    .chat-message {
-        padding: 12px 16px;
-        border-radius: 18px;
-        margin-bottom: 12px;
-        font-size: 0.95rem;
-        line-height: 1.45;
-        max-width: 92%;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        position: relative;
-    }
-    .user-msg {
-        background: linear-gradient(135deg, #3b82f6, #2563eb);
-        color: white;
-        margin-left: auto;
-        border-bottom-right-radius: 4px;
-        text-align: left;
-    }
-    .bot-msg {
-        background: white;
-        color: #1e293b;
-        border: 1px solid #e2e8f0;
-        margin-right: auto;
-        border-bottom-left-radius: 4px;
-    }
-    .bot-msg b {
-        color: #003087;
-    }
-    .chat-avatar {
-        font-size: 1.1rem;
-        margin-right: 6px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -377,314 +310,153 @@ SNT_ADSTE = {
 def get_jurisdiction(station, department):
     if pd.isna(station) or str(station).strip() == "":
         return "Unclassified"
-    
+
     stn = str(station).strip().upper().replace(" ", "")
-    
+
     if stn in ["HGSTN", "HGA", "HG-A"]:
         stn = "HG"
     if stn == "AGDL":
         stn = "AGDl"
-    
+
     dept = str(department).strip().upper() if pd.notna(department) else ""
 
     if "OPTG" in dept or "OPERATING" in dept:
         return OPERATING_TI.get(stn, OPERATING_TI.get(station, "Unclassified"))
-    
+
     if "ENGG" in dept or "ENGINEERING" in dept or "ADEN" in dept:
         return ENGG_ADEN.get(stn, ENGG_ADEN.get(station, "Unclassified"))
-    
+
     if any(x in dept for x in ["TRD", "TRACTION", "OHE"]):
         return ELECT_TRD_SSE.get(stn, ELECT_TRD_SSE.get(station, "Unclassified"))
-    
+
     if any(x in dept for x in ["ELECT", "ELECTRICAL", "SSE/ELECT"]):
         return ELECT_G_SSE.get(stn, ELECT_G_SSE.get(station, "Unclassified"))
-    
+
     return SNT_ADSTE.get(stn, SNT_ADSTE.get(station, "Unclassified"))
 
-# ====================== NATURAL AI CHATBOT ======================
-try:
-    from google import genai
-    from google.genai import types as genai_types
-except ImportError:
-    genai = None
-    genai_types = None
+# ====================== FORECASTING ENGINE ======================
+def build_monthly_series(df, how="sum"):
+    """Aggregate records into a month-start time series of FCOUNT (sum) or record count."""
+    if df is None or df.empty or 'DATE' not in df.columns:
+        return pd.Series(dtype=float)
+    d = df.dropna(subset=['DATE'])
+    if d.empty:
+        return pd.Series(dtype=float)
+    d = d.set_index('DATE').sort_index()
+    if how == "count":
+        series = d.resample('MS').size().astype(float)
+    else:
+        if 'FCOUNT' not in d.columns:
+            return pd.Series(dtype=float)
+        series = d['FCOUNT'].resample('MS').sum().astype(float)
+    return series
 
-MODEL_NAME = "gemini-3.6-flash"
 
-def _read_gemini_api_key():
-    try:
-        key = st.secrets["gemini"]["api_key"]
-        if key and str(key).strip():
-            return str(key).strip()
-    except Exception:
-        pass
-    for path in [("gemini", "API_KEY"), ("GEMINI_API_KEY",), ("GOOGLE_API_KEY",)]:
+def _linear_forecast(series, periods):
+    """Least-squares straight-line trend — used when there is little history."""
+    y = series.values.astype(float)
+    x = np.arange(len(y), dtype=float)
+    slope, intercept = np.polyfit(x, y, 1)
+    fitted = slope * x + intercept
+    future_x = np.arange(len(y), len(y) + periods, dtype=float)
+    vals = slope * future_x + intercept
+    resid = float(np.std(y - fitted, ddof=0))
+    return vals, "Linear trend regression", resid
+
+
+def forecast_series(series, periods=3):
+    """
+    Pick the best model the available history can support and return
+    (forecast Series, model name, residual std-dev used for the confidence band).
+    """
+    series = series.dropna().astype(float)
+    n = len(series)
+    if n == 0:
+        return pd.Series(dtype=float), "No data", 0.0
+
+    future_idx = pd.date_range(series.index[-1] + pd.DateOffset(months=1),
+                               periods=periods, freq='MS')
+
+    if n < 4:
+        vals = np.repeat(float(series.iloc[-1]), periods)
+        method = "Naive (last observed month) — very little history"
+        resid = float(series.std(ddof=0)) if n > 1 else 0.0
+
+    elif STATSMODELS_AVAILABLE and n >= 24:
         try:
-            key = st.secrets[path[0]] if len(path) == 1 else st.secrets[path[0]][path[1]]
-            if key and str(key).strip():
-                return str(key).strip()
+            model = ExponentialSmoothing(
+                series, trend="add", seasonal="add", seasonal_periods=12,
+                damped_trend=True, initialization_method="estimated"
+            ).fit(optimized=True)
+            vals = np.asarray(model.forecast(periods), dtype=float)
+            resid = float(np.std(series.values - np.asarray(model.fittedvalues, dtype=float), ddof=0))
+            method = "Holt-Winters (damped trend + 12-month seasonality)"
         except Exception:
+            vals, method, resid = _linear_forecast(series, periods)
+
+    elif STATSMODELS_AVAILABLE and n >= 6:
+        try:
+            model = ExponentialSmoothing(
+                series, trend="add", damped_trend=True,
+                initialization_method="estimated"
+            ).fit(optimized=True)
+            vals = np.asarray(model.forecast(periods), dtype=float)
+            resid = float(np.std(series.values - np.asarray(model.fittedvalues, dtype=float), ddof=0))
+            method = "Holt exponential smoothing (damped trend)"
+        except Exception:
+            vals, method, resid = _linear_forecast(series, periods)
+
+    else:
+        vals, method, resid = _linear_forecast(series, periods)
+        if not STATSMODELS_AVAILABLE:
+            method += " (install statsmodels for smoothing models)"
+
+    vals = np.clip(np.round(vals), 0, None)
+    return pd.Series(vals, index=future_idx), method, resid
+
+
+def backtest_mape(series, horizon=3):
+    """Hold out the last `horizon` months, refit, and report MAPE %."""
+    series = series.dropna().astype(float)
+    if len(series) < horizon + 4:
+        return None
+    train, test = series.iloc[:-horizon], series.iloc[-horizon:]
+    pred, _, _ = forecast_series(train, horizon)
+    if pred.empty:
+        return None
+    mask = test.values > 0
+    if not mask.any():
+        return None
+    return float(np.mean(np.abs((test.values[mask] - pred.values[:len(test)][mask]) / test.values[mask])) * 100)
+
+
+def forecast_by_group(df, group_col, how, horizon, top_n=10):
+    """Run the same model separately for the busiest `top_n` groups."""
+    if df.empty or group_col not in df.columns:
+        return pd.DataFrame()
+    if how == "count":
+        ranking = df.groupby(group_col).size()
+    else:
+        ranking = df.groupby(group_col)['FCOUNT'].sum()
+    rows = []
+    for g in ranking.sort_values(ascending=False).head(top_n).index:
+        s = build_monthly_series(df[df[group_col] == g], how=how)
+        if s.empty:
             continue
-    return None
+        fc, method, _ = forecast_series(s, horizon)
+        row = {group_col: g, "Last month (actual)": int(s.iloc[-1])}
+        for dt, v in fc.items():
+            row[dt.strftime('%b %Y')] = int(v)
+        row["Forecast total"] = int(fc.sum()) if not fc.empty else 0
+        row["Model"] = method
+        rows.append(row)
+    return pd.DataFrame(rows)
 
-@st.cache_resource
-def get_gemini_client():
-    if genai is None:
-        return None
-    api_key = _read_gemini_api_key()
-    if not api_key:
-        return None
-    try:
-        return genai.Client(api_key=api_key)
-    except Exception:
-        return None
-
-def clear_gemini_cache():
-    get_gemini_client.clear()
-
-def build_data_context(df: pd.DataFrame) -> str:
-    if df is None or df.empty:
-        return "The dataframe is currently empty."
-    lines = [f"Dataframe has {len(df):,} rows. Columns:"]
-    for col in df.columns:
-        lines.append(f"  • {col} ({df[col].dtype})")
-    lines.append("\nKey categorical values (sample):")
-    for col in ["STATION", "DEPARTMENT", "ERROR MAIN CATEGORY", "JURISDICTION", "MONTH"]:
-        if col in df.columns:
-            uniques = df[col].dropna().astype(str).unique().tolist()
-            shown = uniques[:25]
-            more = f" ... +{len(uniques)-25} more" if len(uniques) > 25 else ""
-            lines.append(f"  • {col}: {shown}{more}")
-    if "DATE" in df.columns and pd.api.types.is_datetime64_any_dtype(df["DATE"]):
-        try:
-            lines.append(f"\nDate range: {df['DATE'].min().date()} → {df['DATE'].max().date()}")
-        except Exception:
-            pass
-    if "FCOUNT" in df.columns:
-        try:
-            lines.append(f"Total FCOUNT in current data: {int(df['FCOUNT'].sum()):,}")
-        except Exception:
-            pass
-    return "\n".join(lines)
-
-NATURAL_SYSTEM_PROMPT = """You are a precise data analyst for the Central Railway Solapur Division Safety Data-Logger.
-
-You have a pandas DataFrame called `df`. Description:
-
-{data_context}
-
-STRICT RULES:
-- For ANY question that involves numbers, counts, totals, rankings, averages, trends, comparisons, "how many", "top", "highest", "lowest", "total FCOUNT", etc. → you MUST set "type": "code" and generate correct pandas code.
-- Never invent or guess numbers. Only report what the code actually returns.
-- The "answer" field must be a natural, complete sentence that includes the real numbers from the calculation.
-- Code must be short, defensive, and assign the final value to `result`.
-- Use only real column names from the context above.
-- Always handle NaNs (dropna or fillna(0)).
-
-Respond ONLY with this JSON:
-{{
-  "type": "text" or "code",
-  "answer": "natural language answer the user will see",
-  "pandas_code": "code here if type=code, else null"
-}}
-"""
-
-FORBIDDEN_PATTERNS = [
-    r"\bimport\b", r"\bopen\s*\(", r"\bexec\s*\(", r"\beval\s*\(", r"\bcompile\s*\(",
-    r"\bos\.", r"\bsys\.", r"\bsubprocess\b", r"\brequests\b", r"\bsocket\b",
-    r"__\w+__", r"\bglobals\s*\(", r"\blocals\s*\(", r"\bgetattr\s*\(", r"\bsetattr\s*\(",
-    r"\bdelattr\s*\(", r"\binput\s*\(", r"\.system\s*\(", r"\bread_csv\s*\(", r"\bread_excel\s*\(",
-    r"\bto_csv\s*\(", r"\bto_excel\s*\(", r"\bdf\s*=\s*", r"\bdf\.drop\s*\(.*inplace",
-    r"\bdf\[.*\]\s*=",
-]
-
-def validate_code(code: str) -> bool:
-    if not code or not isinstance(code, str):
-        return False
-    for p in FORBIDDEN_PATTERNS:
-        if re.search(p, code, re.IGNORECASE):
-            return False
-    return True
-
-class _TimeoutError(Exception):
-    pass
-
-def _timeout_handler(signum, frame):
-    raise _TimeoutError()
-
-def safe_execute(code: str, df: pd.DataFrame, timeout_seconds: int = 6):
-    safe_builtins = {
-        "len": len, "int": int, "float": float, "str": str, "round": round,
-        "sorted": sorted, "list": list, "dict": dict, "set": set, "sum": sum,
-        "min": min, "max": max, "abs": abs, "range": range, "enumerate": enumerate,
-        "zip": zip, "bool": bool, "isinstance": isinstance, "type": type,
-    }
-    local_ns = {"df": df.copy(), "pd": pd, "result": None}
-    global_ns = {"__builtins__": safe_builtins}
-    use_alarm = platform.system() != "Windows"
-    if use_alarm:
-        old = signal.signal(signal.SIGALRM, _timeout_handler)
-        signal.alarm(timeout_seconds)
-    try:
-        exec(code, global_ns, local_ns)
-    finally:
-        if use_alarm:
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, old)
-    return local_ns.get("result")
-
-def format_result(result) -> str:
-    if result is None:
-        return "No result."
-    if isinstance(result, (int, float)):
-        if isinstance(result, float) and not result.is_integer():
-            return f"<b>{result:,.2f}</b>"
-        return f"<b>{int(result):,}</b>"
-    if isinstance(result, str):
-        return result
-    if isinstance(result, pd.Series):
-        items = list(result.items())[:15]
-        lines = []
-        for idx, val in items:
-            if isinstance(val, float):
-                lines.append(f"• <b>{idx}</b>: {val:,.2f}")
-            else:
-                lines.append(f"• <b>{idx}</b>: {val:,}")
-        more = f"<br>...and {len(result)-15} more" if len(result) > 15 else ""
-        return "<br>".join(lines) + more
-    if isinstance(result, pd.DataFrame):
-        try:
-            return result.head(12).to_html(index=False, border=0, classes="chat-result-table")
-        except Exception:
-            return result.head(12).to_string(index=False)
-    return str(result)
-
-def basic_offline_fallback(question: str, df: pd.DataFrame) -> str:
-    q = question.lower()
-    if df is None or df.empty:
-        return "I don't have data loaded right now."
-    if any(w in q for w in ["top", "highest", "most"]) and "STATION" in df.columns and "FCOUNT" in df.columns:
-        totals = df.groupby("STATION")["FCOUNT"].sum().sort_values(ascending=False)
-        if not totals.empty:
-            return f"The station with the highest FCOUNT is <b>{totals.index[0]}</b> with <b>{int(totals.iloc[0]):,}</b>."
-    if "total" in q and "fcount" in q and "FCOUNT" in df.columns:
-        return f"Total FCOUNT right now is <b>{int(df['FCOUNT'].sum()):,}</b>."
-    if "total" in q and ("record" in q or "case" in q or "row" in q):
-        return f"There are currently <b>{len(df):,}</b> records."
-    return "I'm temporarily unable to reach the AI model. Please try again in a few seconds."
-
-def ask_chatbot(question: str, df: pd.DataFrame, force_refresh_callback=None) -> str:
-    if not question or not question.strip():
-        return "Ask me anything about the data — stations, FCOUNT, departments, trends, comparisons..."
-
-    q = question.lower().strip()
-
-    # -------------------------------------------------
-    # HARD-CODED RELIABLE ANSWERS for the most common questions
-    # This guarantees correct results even if Gemini fails
-    # -------------------------------------------------
-    if df is not None and not df.empty and "FCOUNT" in df.columns and "STATION" in df.columns:
-
-        # Top stations by FCOUNT
-        if any(phrase in q for phrase in ["top 5 station", "top five station", "top stations", "highest fcount", "most fcount", "top 5 by fcount"]):
-            try:
-                top = df.groupby("STATION")["FCOUNT"].sum().sort_values(ascending=False).head(5)
-                lines = [f"{i+1}. <b>{stn}</b> → <b>{int(val):,}</b>" for i, (stn, val) in enumerate(top.items())]
-                return "Top 5 stations by total FCOUNT:<br><br>" + "<br>".join(lines)
-            except Exception:
-                pass
-
-        # Top 10 stations
-        if "top 10" in q and "station" in q:
-            try:
-                top = df.groupby("STATION")["FCOUNT"].sum().sort_values(ascending=False).head(10)
-                lines = [f"{i+1}. <b>{stn}</b> → <b>{int(val):,}</b>" for i, (stn, val) in enumerate(top.items())]
-                return "Top 10 stations by total FCOUNT:<br><br>" + "<br>".join(lines)
-            except Exception:
-                pass
-
-        # Total FCOUNT
-        if any(phrase in q for phrase in ["total fcount", "overall fcount", "sum of fcount", "total fault"]):
-            try:
-                total = int(df["FCOUNT"].sum())
-                return f"Total FCOUNT in the current data is <b>{total:,}</b>."
-            except Exception:
-                pass
-
-        # Total records
-        if any(phrase in q for phrase in ["total record", "how many record", "number of record", "total case", "how many case"]):
-            return f"There are currently <b>{len(df):,}</b> records."
-
-        # Station specific
-        for stn in df["STATION"].dropna().unique():
-            stn_lower = str(stn).lower()
-            if stn_lower in q and ("fcount" in q or "fault" in q):
-                try:
-                    val = int(df[df["STATION"] == stn]["FCOUNT"].sum())
-                    return f"Total FCOUNT for station <b>{stn}</b> is <b>{val:,}</b>."
-                except Exception:
-                    pass
-
-    # -------------------------------------------------
-    # If we reach here → try Gemini
-    # -------------------------------------------------
-    if force_refresh_callback and any(w in q for w in ["latest data", "live data", "refresh data", "up to date"]):
-        try:
-            force_refresh_callback()
-        except Exception:
-            pass
-
-    client = get_gemini_client()
-    if client is None:
-        return basic_offline_fallback(question, df)
-
-    data_context = build_data_context(df)
-    system_prompt = NATURAL_SYSTEM_PROMPT.format(data_context=data_context)
-
-    def call_gemini(extra: str = "") -> Optional[dict]:
-        prompt = question if not extra else f"{question}\n\nAdditional instruction: {extra}"
-        try:
-            resp = client.models.generate_content(
-                model=MODEL_NAME,
-                contents=prompt,
-                config=genai_types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    temperature=0.1,
-                    response_mime_type="application/json",
-                ),
-            )
-            raw = resp.text.strip()
-            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw)
-            return json.loads(raw)
-        except Exception:
-            return None
-
-    parsed = call_gemini()
-    if parsed is None:
-        return basic_offline_fallback(question, df)
-
-    answer = parsed.get("answer") or "I couldn't generate a proper answer."
-
-    if parsed.get("type") != "code" or not parsed.get("pandas_code"):
-        return answer
-
-    code = parsed["pandas_code"]
-    if not validate_code(code):
-        return answer
-
-    try:
-        result = safe_execute(code, df)
-        formatted = format_result(result)
-        return f"{answer}<br><br>{formatted}"
-    except Exception:
-        # Final fallback to the reliable offline method
-        return basic_offline_fallback(question, df)# ====================== SESSION STATE ======================
+# ====================== SESSION STATE ======================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "map_selected_station" not in st.session_state:
     st.session_state.map_selected_station = None
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
 
 # ====================== LOGIN & LOAD DATA ======================
 def login_page():
@@ -756,52 +528,11 @@ else:
 
     df_original = load_data_from_gsheet()
 
-    # ====================== SIDEBAR (Controls + Chat History) ======================
+    # ====================== SIDEBAR ======================
     with st.sidebar:
         st.header("🔧 Controls")
-        if st.button("🔄 Refresh Data", type="primary", use_container_width=True, key="refresh_btn"):
+        if st.button("🔄 Refresh Data", type="primary", use_container_width=True):
             refresh_data()
-
-        st.markdown("---")
-
-        st.markdown("""
-        <div class="chatbot-header">
-            🤖 AI Chatbot
-            <span>Spelling tolerant</span>
-        </div>
-        """, unsafe_allow_html=True)
-
-        chat_html = '<div class="chat-container">'
-        for chat in st.session_state.chat_history[-12:]:
-            if chat["role"] == "user":
-                chat_html += f'''
-                <div class="chat-message user-msg">
-                    <span class="chat-avatar">👤</span>{chat["content"]}
-                </div>'''
-            else:
-                chat_html += f'''
-                <div class="chat-message bot-msg">
-                    <span class="chat-avatar">🤖</span>{chat["content"]}
-                </div>'''
-        chat_html += '</div>'
-        st.markdown(chat_html, unsafe_allow_html=True)
-
-        if st.button("🗑️ Clear Chat", use_container_width=True, key="clear_chat_btn"):
-            st.session_state.chat_history = []
-            st.rerun()
-
-        st.markdown("---")
-        st.markdown("**🔧 Gemini Status**")
-        if st.button("🔍 Diagnose Gemini", use_container_width=True, key="diagnose_btn"):
-            client = get_gemini_client()
-            if client:
-                st.success("✅ Gemini client is ready")
-            else:
-                st.error("❌ Gemini client not available – check secrets")
-        if st.button("🗑️ Clear Gemini Cache", use_container_width=True, key="clear_gemini_btn"):
-            clear_gemini_cache()
-            st.success("Cache cleared")
-            st.rerun()
 
     # ====================== LIVE FILTERS ======================
     st.markdown("### 🔍 Live Filters")
@@ -844,39 +575,38 @@ else:
     st.divider()
 
     # ====================== APPLY FILTERS ======================
-    filtered_df = df_original.copy()
+    def apply_category_filters(df):
+        """Every filter except DATE range and MONTH (those would break the time series)."""
+        out = df.copy()
+        if selected_stations and 'STATION' in out.columns:
+            out = out[out['STATION'].isin(selected_stations)]
+        if selected_errors and 'ERROR MAIN CATEGORY' in out.columns:
+            out = out[out['ERROR MAIN CATEGORY'].isin(selected_errors)]
+        if selected_categories and 'DEPARTMENT' in out.columns:
+            out = out[out['DEPARTMENT'].isin(selected_categories)]
+        if selected_fcount and 'FCOUNT' in out.columns:
+            out = out[out['FCOUNT'].isin(selected_fcount)]
+        if selected_fault and 'DL FAULT MESSAGE' in out.columns:
+            out = out[out['DL FAULT MESSAGE'].isin(selected_fault)]
+        if selected_remark and 'REMARKS GIVEN BY S&T' in out.columns:
+            out = out[out['REMARKS GIVEN BY S&T'].isin(selected_remark)]
+        if selected_jurisdictions and 'JURISDICTION' in out.columns:
+            out = out[out['JURISDICTION'].isin(selected_jurisdictions)]
+        if st.session_state.map_selected_station and 'STATION' in out.columns:
+            out = out[out['STATION'] == st.session_state.map_selected_station]
+        return out
+
+    # Forecast uses the full history (date/month filters deliberately not applied)
+    forecast_base_df = apply_category_filters(df_original)
+
+    filtered_df = forecast_base_df.copy()
     if 'DATE' in filtered_df.columns:
         filtered_df = filtered_df[
             (filtered_df['DATE'].dt.date >= from_date) &
             (filtered_df['DATE'].dt.date <= to_date)
         ]
-    if selected_stations:
-        filtered_df = filtered_df[filtered_df['STATION'].isin(selected_stations)]
-    if selected_errors and 'ERROR MAIN CATEGORY' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['ERROR MAIN CATEGORY'].isin(selected_errors)]
-    if selected_categories and 'DEPARTMENT' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['DEPARTMENT'].isin(selected_categories)]
     if selected_months and 'MONTH' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['MONTH'].isin(selected_months)]
-    if selected_fcount and 'FCOUNT' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['FCOUNT'].isin(selected_fcount)]
-    if selected_fault and 'DL FAULT MESSAGE' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['DL FAULT MESSAGE'].isin(selected_fault)]
-    if selected_remark and 'REMARKS GIVEN BY S&T' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['REMARKS GIVEN BY S&T'].isin(selected_remark)]
-    if selected_jurisdictions and 'JURISDICTION' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['JURISDICTION'].isin(selected_jurisdictions)]
-    if st.session_state.map_selected_station:
-        filtered_df = filtered_df[filtered_df['STATION'] == st.session_state.map_selected_station]
-
-    # ====================== CHATBOT INPUT (AFTER filtered_df exists) ======================
-    with st.sidebar:
-        user_question = st.chat_input("Ask me anything about the data...")
-        if user_question:
-            st.session_state.chat_history.append({"role": "user", "content": user_question})
-            answer = ask_chatbot(user_question, filtered_df)
-            st.session_state.chat_history.append({"role": "assistant", "content": answer})
-            st.rerun()
 
     # ====================== PRE-COMPUTE SUMMARIES ======================
     cat_sum = pd.DataFrame()
@@ -893,23 +623,14 @@ else:
     st.divider()
 
     # ====================== TABS ======================
-    tab_overview, tab_map = st.tabs(["📊 Overview Dashboard", "🗺️ Map View"])
+    tab_overview, tab_forecast, tab_map = st.tabs(
+        ["📊 Overview Dashboard", "🔮 Forecast (3 Months)", "🗺️ Map View"]
+    )
 
     with tab_overview:
         st.subheader("📊 Overview Dashboard")
 
-        if not filtered_df.empty and 'STATION' in filtered_df.columns and 'FCOUNT' in filtered_df.columns:
-            station_fcount = filtered_df.groupby('STATION')['FCOUNT'].sum().sort_values(ascending=False)
-            critical_stations = station_fcount[station_fcount >= 1000]
-            
-            if not critical_stations.empty:
-                alert_text = "⚠️ <b>CRITICAL ALERT</b> — High FCOUNT Stations: "
-                alert_parts = [f"<b>{stn}</b> ({val:,})" for stn, val in critical_stations.head(5).items()]
-                alert_text += " | ".join(alert_parts)
-                if len(critical_stations) > 5:
-                    alert_text += f" + {len(critical_stations)-5} more"
-                st.markdown(f'<div class="alert-box">{alert_text}</div>', unsafe_allow_html=True)
-
+        # KPI Metrics
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             st.metric("Total Records", f"{len(filtered_df):,}")
@@ -932,6 +653,7 @@ else:
 
         st.markdown("---")
 
+        # Top 15 + Station Summary
         col_g1, col_g2 = st.columns([3, 2])
         with col_g1:
             st.markdown('<p class="section-header">Top 15 Stations by FCOUNT</p>', unsafe_allow_html=True)
@@ -947,39 +669,22 @@ else:
                 summary = filtered_df.groupby('STATION')['FCOUNT'].agg(Total_FCOUNT='sum', Records='count').sort_values('Total_FCOUNT', ascending=False)
                 st.dataframe(summary.style.format({"Total_FCOUNT": "{:,}", "Records": "{:,}"}).background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'), use_container_width=True)
 
-        st.markdown("---")
-        st.markdown('<p class="section-header">📈 Monthly Trend of FCOUNT</p>', unsafe_allow_html=True)
-        
-        if not filtered_df.empty and 'YEAR_MONTH' in filtered_df.columns:
-            monthly = filtered_df.groupby('YEAR_MONTH')['FCOUNT'].sum().reset_index()
-            monthly = monthly.sort_values('YEAR_MONTH')
-            
-            fig_trend = px.line(monthly, x='YEAR_MONTH', y='FCOUNT', markers=True, text='FCOUNT')
-            fig_trend.update_traces(textposition="top center", line=dict(width=3), marker=dict(size=10))
-            fig_trend.update_layout(height=450, xaxis_title="Month", yaxis_title="Total FCOUNT",
-                                    hovermode="x unified", dragmode="zoom",
-                                    xaxis=dict(tickangle=-45, type='category'))
-            
-            st.plotly_chart(fig_trend, use_container_width=True, config={
-                'displayModeBar': True, 'scrollZoom': True, 'displaylogo': False
-            })
-            st.caption("Tip: Click and drag to zoom. Double-click to reset.")
-        else:
-            st.info("No monthly data available for trend.")
-
+        # Distribution Charts (Horizontal Bars)
         st.markdown("---")
         st.markdown('<p class="section-header">📊 Distribution Charts</p>', unsafe_allow_html=True)
-        
+
         col_c1, col_c2, col_c3 = st.columns(3)
 
         with col_c1:
             st.markdown("**Department-wise**")
             if not cat_sum.empty:
-                fig_dept = px.pie(cat_sum, names='DEPARTMENT', values='Cases', hole=0.4,
-                                  color_discrete_sequence=px.colors.qualitative.Vivid)
-                fig_dept.update_traces(textposition='inside', textinfo='percent+label', textfont_size=13,
-                                       marker=dict(line=dict(color='#ffffff', width=2)))
-                fig_dept.update_layout(height=400, showlegend=False, margin=dict(t=30, b=30, l=20, r=20))
+                dept_plot = cat_sum.sort_values('Cases', ascending=True)
+                fig_dept = px.bar(dept_plot, x='Cases', y='DEPARTMENT', orientation='h',
+                                  text='Cases', color='Cases', color_continuous_scale='Blues')
+                fig_dept.update_traces(textposition='outside', cliponaxis=False)
+                fig_dept.update_layout(height=400, showlegend=False, coloraxis_showscale=False,
+                                       xaxis_title="Cases", yaxis_title="",
+                                       margin=dict(t=30, b=30, l=20, r=50))
                 st.plotly_chart(fig_dept, use_container_width=True)
             else:
                 st.info("No Department data")
@@ -987,11 +692,13 @@ else:
         with col_c2:
             st.markdown("**Error Main Category**")
             if not error_sum.empty:
-                fig_err = px.pie(error_sum, names='ERROR MAIN CATEGORY', values='Cases', hole=0.4,
-                                 color_discrete_sequence=px.colors.qualitative.Bold)
-                fig_err.update_traces(textposition='inside', textinfo='percent+label', textfont_size=12,
-                                      marker=dict(line=dict(color='#ffffff', width=2)))
-                fig_err.update_layout(height=400, showlegend=False, margin=dict(t=30, b=30, l=20, r=20))
+                err_plot = error_sum.head(12).sort_values('Cases', ascending=True)
+                fig_err = px.bar(err_plot, x='Cases', y='ERROR MAIN CATEGORY', orientation='h',
+                                 text='Cases', color='Cases', color_continuous_scale='Oranges')
+                fig_err.update_traces(textposition='outside', cliponaxis=False)
+                fig_err.update_layout(height=400, showlegend=False, coloraxis_showscale=False,
+                                      xaxis_title="Cases", yaxis_title="",
+                                      margin=dict(t=30, b=30, l=20, r=50))
                 st.plotly_chart(fig_err, use_container_width=True)
             else:
                 st.info("No Error data")
@@ -999,22 +706,18 @@ else:
         with col_c3:
             st.markdown("**Jurisdiction-wise**")
             if not jur_sum.empty:
-                if len(jur_sum) > 10:
-                    top10 = jur_sum.head(10).copy()
-                    others = pd.DataFrame({'JURISDICTION': ['Others'], 'Cases': [jur_sum.iloc[10:]['Cases'].sum()]})
-                    jur_plot = pd.concat([top10, others], ignore_index=True)
-                else:
-                    jur_plot = jur_sum
-
-                fig_jur = px.pie(jur_plot, names='JURISDICTION', values='Cases', hole=0.4,
-                                 color_discrete_sequence=px.colors.qualitative.Pastel)
-                fig_jur.update_traces(textposition='inside', textinfo='percent+label', textfont_size=11,
-                                      marker=dict(line=dict(color='#ffffff', width=2)))
-                fig_jur.update_layout(height=400, showlegend=False, margin=dict(t=30, b=30, l=20, r=20))
+                jur_plot = jur_sum.head(12).sort_values('Cases', ascending=True)
+                fig_jur = px.bar(jur_plot, x='Cases', y='JURISDICTION', orientation='h',
+                                 text='Cases', color='Cases', color_continuous_scale='Teal')
+                fig_jur.update_traces(textposition='outside', cliponaxis=False)
+                fig_jur.update_layout(height=400, showlegend=False, coloraxis_showscale=False,
+                                      xaxis_title="Cases", yaxis_title="",
+                                      margin=dict(t=30, b=30, l=20, r=50))
                 st.plotly_chart(fig_jur, use_container_width=True)
             else:
                 st.info("No Jurisdiction data")
 
+        # Summary Tables
         st.markdown("---")
         col_s1, col_s2, col_s3 = st.columns(3)
         with col_s1:
@@ -1030,6 +733,7 @@ else:
                 st.markdown('<p class="section-header">JURISDICTION</p>', unsafe_allow_html=True)
                 st.dataframe(jur_sum.style.format({"Cases": "{:,}"}), use_container_width=True, hide_index=True)
 
+        # Detailed Records
         st.markdown("---")
         st.markdown('<p class="section-header">Detailed Records</p>', unsafe_allow_html=True)
         if filtered_df.empty:
@@ -1070,28 +774,174 @@ else:
                     use_container_width=True
                 )
 
+    # ====================== FORECAST TAB ======================
+    with tab_forecast:
+        st.subheader("🔮 Forecast — next 1 to 3 months")
+        st.caption("The model uses the **complete** history of the sheet (the FROM/TO date and MONTH "
+                   "filters are ignored here). All other filters do apply.")
+
+        fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 2])
+        with fc1:
+            horizon = st.slider("Months ahead", min_value=1, max_value=3, value=3, key="fc_horizon")
+        with fc2:
+            metric_choice = st.selectbox("Metric to predict", ["Total FCOUNT", "Number of cases"], key="fc_metric")
+        with fc3:
+            level = st.selectbox("Break-up by",
+                                 ["Division total (no break-up)", "Station", "Department", "Jurisdiction", "Error Main Category"],
+                                 key="fc_level")
+        with fc4:
+            top_n = st.number_input("Top N groups", min_value=3, max_value=25, value=10, step=1, key="fc_topn")
+
+        how = "sum" if metric_choice == "Total FCOUNT" else "count"
+        metric_label = "FCOUNT" if how == "sum" else "Cases"
+
+        hist = build_monthly_series(forecast_base_df, how=how)
+
+        if hist.empty:
+            st.warning("Not enough dated records to build a forecast.")
+        else:
+            fc, method, resid = forecast_series(hist, horizon)
+            mape = backtest_mape(hist, horizon=min(3, max(1, len(hist) // 4)))
+
+            k1, k2, k3, k4 = st.columns(4)
+            with k1:
+                st.metric("Months of history", f"{len(hist)}")
+            with k2:
+                st.metric(f"Last month {metric_label}", f"{int(hist.iloc[-1]):,}")
+            with k3:
+                st.metric(f"Next {horizon} months (predicted)", f"{int(fc.sum()):,}")
+            with k4:
+                change = ((fc.mean() - hist.iloc[-1]) / hist.iloc[-1] * 100) if hist.iloc[-1] else 0
+                st.metric("vs last month", f"{change:+.1f}%")
+
+            st.info(f"**Model used:** {method}"
+                    + (f"  •  **Back-test accuracy (MAPE):** {mape:.1f}% error" if mape is not None
+                       else "  •  Back-test skipped (history too short)"))
+
+            # ---- Chart: history + forecast + confidence band ----
+            anchor_x = [hist.index[-1]] + list(fc.index)
+            anchor_y = [float(hist.iloc[-1])] + [float(v) for v in fc.values]
+            margins = [0.0] + [1.96 * resid * np.sqrt(i + 1) for i in range(len(fc))]
+            upper = [y + m for y, m in zip(anchor_y, margins)]
+            lower = [max(0.0, y - m) for y, m in zip(anchor_y, margins)]
+
+            fig_fc = go.Figure()
+            fig_fc.add_trace(go.Scatter(
+                x=list(anchor_x) + list(anchor_x)[::-1],
+                y=upper + lower[::-1],
+                fill='toself', fillcolor='rgba(255,153,51,0.18)',
+                line=dict(color='rgba(0,0,0,0)'), hoverinfo='skip',
+                name='95% confidence range'
+            ))
+            fig_fc.add_trace(go.Scatter(
+                x=hist.index, y=hist.values, mode='lines+markers', name='Actual',
+                line=dict(color='#003087', width=3), marker=dict(size=8)
+            ))
+            fig_fc.add_trace(go.Scatter(
+                x=anchor_x, y=anchor_y, mode='lines+markers+text', name='Forecast',
+                line=dict(color='#FF9933', width=3, dash='dash'), marker=dict(size=10),
+                text=[""] + [f"{int(v):,}" for v in fc.values], textposition='top center'
+            ))
+            fig_fc.update_layout(height=470, hovermode='x unified',
+                                 xaxis_title="Month", yaxis_title=f"Monthly {metric_label}",
+                                 legend=dict(orientation='h', y=1.12))
+            st.plotly_chart(fig_fc, use_container_width=True, config={'displaylogo': False})
+
+            # ---- Division-level forecast table ----
+            fc_table = pd.DataFrame({
+                "Month": [d.strftime('%B %Y') for d in fc.index],
+                f"Predicted {metric_label}": [int(v) for v in fc.values],
+                "Lower estimate": [int(max(0, v - 1.96 * resid * np.sqrt(i + 1))) for i, v in enumerate(fc.values)],
+                "Upper estimate": [int(v + 1.96 * resid * np.sqrt(i + 1)) for i, v in enumerate(fc.values)],
+            })
+            st.markdown('<p class="section-header">Predicted values</p>', unsafe_allow_html=True)
+            st.dataframe(fc_table.style.format({
+                f"Predicted {metric_label}": "{:,}", "Lower estimate": "{:,}", "Upper estimate": "{:,}"
+            }), use_container_width=True, hide_index=True)
+
+            # ---- Group-level forecast ----
+            group_map = {
+                "Station": "STATION",
+                "Department": "DEPARTMENT",
+                "Jurisdiction": "JURISDICTION",
+                "Error Main Category": "ERROR MAIN CATEGORY",
+            }
+            group_table = pd.DataFrame()
+            if level in group_map:
+                gcol = group_map[level]
+                st.markdown("---")
+                st.markdown(f'<p class="section-header">Forecast by {level} (top {int(top_n)})</p>',
+                            unsafe_allow_html=True)
+                with st.spinner("Fitting models group by group..."):
+                    group_table = forecast_by_group(forecast_base_df, gcol, how, horizon, int(top_n))
+
+                if group_table.empty:
+                    st.info("Not enough history for a group-wise forecast.")
+                else:
+                    num_cols = [c for c in group_table.columns if c not in (gcol, "Model")]
+                    st.dataframe(
+                        group_table.style.format({c: "{:,}" for c in num_cols})
+                        .background_gradient(subset=["Forecast total"], cmap='YlOrRd'),
+                        use_container_width=True, hide_index=True
+                    )
+
+                    plot_df = group_table.sort_values("Forecast total", ascending=True)
+                    fig_grp = px.bar(plot_df, x="Forecast total", y=gcol, orientation='h',
+                                     text="Forecast total", color="Forecast total",
+                                     color_continuous_scale='RdYlGn_r')
+                    fig_grp.update_traces(textposition='outside', cliponaxis=False)
+                    fig_grp.update_layout(height=480, coloraxis_showscale=False,
+                                          xaxis_title=f"Predicted {metric_label} (next {horizon} months)",
+                                          yaxis_title="", margin=dict(t=30, b=30, l=20, r=60))
+                    st.plotly_chart(fig_grp, use_container_width=True)
+
+            # ---- Download forecast ----
+            st.markdown("---")
+            col_fb1, col_fb2, col_fb3 = st.columns([1, 3, 1])
+            with col_fb2:
+                fout = BytesIO()
+                with pd.ExcelWriter(fout, engine='xlsxwriter') as writer:
+                    fc_table.to_excel(writer, index=False, sheet_name='Division_Forecast')
+                    hist.rename(metric_label).reset_index().rename(
+                        columns={'index': 'Month', 'DATE': 'Month'}
+                    ).to_excel(writer, index=False, sheet_name='Monthly_History')
+                    if not group_table.empty:
+                        group_table.to_excel(writer, index=False, sheet_name='Group_Forecast')
+                fout.seek(0)
+                st.download_button(
+                    label="⬇️ Download Forecast Report",
+                    data=fout.getvalue(),
+                    file_name=f"Datalogger_Forecast_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
+                    use_container_width=True
+                )
+
+            st.caption("⚠️ Forecasts are statistical projections from past data only. They assume conditions "
+                       "stay broadly the same and should support — not replace — field judgement.")
+
     with tab_map:
         st.subheader("🗺️ Interactive Map View - Click on Station to Filter")
-       
+
         if st.session_state.map_selected_station:
             col_clear1, col_clear2 = st.columns([1, 5])
             with col_clear1:
-                if st.button("🔄 Clear Station Selection", type="secondary", use_container_width=True, key="clear_map_btn"):
+                if st.button("🔄 Clear Station Selection", type="secondary", use_container_width=True):
                     st.session_state.map_selected_station = None
                     st.rerun()
             st.success(f"📍 Currently viewing: **{st.session_state.map_selected_station}**")
-        
+
         st.markdown("<br>", unsafe_allow_html=True)
-        
+
         col_m1, col_m2 = st.columns([3, 2])
-       
+
         with col_m1:
             if filtered_df.empty or 'STATION' not in filtered_df.columns:
                 st.warning("No data available.")
             else:
                 map_agg = filtered_df.groupby('STATION')['FCOUNT'].sum().reset_index()
                 map_data = []
-               
+
                 for _, row in map_agg.iterrows():
                     station_name = str(row['STATION']).strip().upper()
                     best_match = None
@@ -1106,13 +956,13 @@ else:
                             'lat': best_match['lat'],
                             'lon': best_match['lon']
                         })
-               
+
                 map_df = pd.DataFrame(map_data)
-               
+
                 if not map_df.empty:
                     with st.spinner("Rendering map..."):
                         m = folium.Map(location=[17.85, 75.80], zoom_start=7.2, tiles=None, control_scale=True)
-                    
+
                         carto_key = st.secrets["carto"]["api_key"]
                         folium.TileLayer(
                             tiles=f"https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}.png?key={carto_key}",
@@ -1120,16 +970,16 @@ else:
                             attr='© OpenStreetMap © CARTO',
                             control=True, subdomains="abcd", max_zoom=20
                         ).add_to(m)
-                    
+
                         folium.TileLayer("OpenStreetMap", name="🌍 OpenStreetMap", control=True).add_to(m)
                         folium.TileLayer(
                             tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
                             attr="Esri", name="🌐 Satellite", control=True
                         ).add_to(m)
-                    
+
                         folium.LayerControl(position="topright", collapsed=False).add_to(m)
                         Fullscreen().add_to(m)
-                       
+
                         for _, row in map_df.iterrows():
                             fcount = int(row['FCOUNT'])
                             if fcount < 600:
@@ -1139,7 +989,7 @@ else:
                             else:
                                 color = "darkred"
                             radius = 8 + min(fcount / 50, 25)
-                            
+
                             folium.CircleMarker(
                                 location=[row['lat'], row['lon']],
                                 radius=radius,
@@ -1147,16 +997,16 @@ else:
                                 tooltip=f"{row['STATION']} ({fcount:,})",
                                 color=color, fill=True, fill_color=color, fill_opacity=0.85, weight=2
                             ).add_to(m)
-                       
+
                         map_key = f"folium_map_{len(filtered_df)}"
                         map_return = st_folium(m, width=950, height=680, key=map_key, returned_objects=["last_object_clicked"])
-                       
+
                         if map_return and map_return.get("last_object_clicked"):
                             lat = map_return["last_object_clicked"]["lat"]
                             lon = map_return["last_object_clicked"]["lng"]
                             map_df['dist'] = ((map_df['lat'] - lat)**2 + (map_df['lon'] - lon)**2)**0.5
                             selected_station = map_df.loc[map_df['dist'].idxmin(), 'STATION']
-                           
+
                             if st.session_state.map_selected_station != selected_station:
                                 st.session_state.map_selected_station = selected_station
                                 st.rerun()
