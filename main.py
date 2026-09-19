@@ -189,7 +189,7 @@ ELECT_G_SSE = {
     "SGLA": "SSE/ELECT/KWV", "DLGN": "SSE/ELECT/KWV", "JTRD": "SSE/ELECT/KWV", "SGRE": "SSE/ELECT/KWV",
     "ARAG": "SSE/ELECT/KWV", "KVK": "SSE/ELECT/KWV", "MRJ": "SSE/ELECT/KWV", "MKPT": "SSE/ELECT/KWV",
     "AAG": "SSE/ELECT/KWV", "WKA": "SSE/ELECT/KWV", "MA": "SSE/ELECT/KWV", "WDS": "SSE/ELECT/KWV",
-    "WSD": "SSE/ELECT/KWV", "MADHA": "SSE/ELECT/KWV", "PSS": "SSE/ELECT/KWV", "LAUL": "SSE/ELECT/KWV",
+    "WSD": "SSE/Elect/KWV", "MADHA": "SSE/ELECT/KWV", "PSS": "SSE/ELECT/KWV", "LAUL": "SSE/ELECT/KWV",
     "CNHL": "SSE/ELECT/KWV", "MGO": "SSE/ELECT/KWV", "MSDG": "SSE/ELECT/KWV", "JVA": "SSE/ELECT/KWV",
     "GLV": "SSE/ELECT/KWV", "LNP": "SSE/ELECT/KWV", "AGDl": "SSE/ELECT/KWV", "BLWD": "SSE/ELECT/KWV",
     "BDK": "SSE/ELECT/KWV", "BLNK": "SSE/ELECT/KWV", "BBV": "SSE/ELECT/KWV", "AHI": "SSE/ELECT/KWV",
@@ -453,11 +453,102 @@ def forecast_by_group(df, group_col, how, horizon, top_n=10):
         rows.append(row)
     return pd.DataFrame(rows)
 
+# ====================== HELPER: FORMATTED EXCEL ======================
+def create_formatted_excel(dfs_dict):
+    """
+    Create a professionally formatted Excel file with:
+    - Text wrapping
+    - All borders
+    - Center / left alignment
+    - Header styling
+    - Auto-adjusted column widths
+    """
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        workbook = writer.book
+
+        # Formats
+        header_fmt = workbook.add_format({
+            'bold': True,
+            'text_wrap': True,
+            'valign': 'vcenter',
+            'align': 'center',
+            'fg_color': '#003087',
+            'font_color': 'white',
+            'border': 1,
+            'border_color': '#000000'
+        })
+        cell_fmt = workbook.add_format({
+            'text_wrap': True,
+            'valign': 'vcenter',
+            'align': 'left',
+            'border': 1,
+            'border_color': '#000000'
+        })
+        center_fmt = workbook.add_format({
+            'text_wrap': True,
+            'valign': 'vcenter',
+            'align': 'center',
+            'border': 1,
+            'border_color': '#000000'
+        })
+        number_fmt = workbook.add_format({
+            'text_wrap': True,
+            'valign': 'vcenter',
+            'align': 'center',
+            'border': 1,
+            'border_color': '#000000',
+            'num_format': '#,##0'
+        })
+
+        for sheet_name, df in dfs_dict.items():
+            if df is None or df.empty:
+                continue
+            df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
+            worksheet = writer.sheets[sheet_name[:31]]
+
+            # Header row
+            for col_num, col_name in enumerate(df.columns):
+                worksheet.write(0, col_num, col_name, header_fmt)
+
+            # Data rows
+            for row_num in range(1, len(df) + 1):
+                for col_num, col_name in enumerate(df.columns):
+                    value = df.iloc[row_num - 1, col_num]
+                    if pd.isna(value):
+                        value = ""
+                    # Decide format
+                    if isinstance(value, (int, float, np.integer, np.floating)):
+                        worksheet.write(row_num, col_num, value, number_fmt)
+                    else:
+                        worksheet.write(row_num, col_num, str(value), cell_fmt)
+
+            # Auto column width (with wrap consideration)
+            for col_num, col_name in enumerate(df.columns):
+                max_len = max(
+                    len(str(col_name)),
+                    df.iloc[:, col_num].astype(str).str.len().max() if not df.empty else 0
+                )
+                # Cap width so text wrapping is useful
+                width = min(max(max_len + 2, 12), 45)
+                worksheet.set_column(col_num, col_num, width)
+
+            # Freeze header
+            worksheet.freeze_panes(1, 0)
+            # Set reasonable row height for wrapped text
+            worksheet.set_default_row(18)
+            worksheet.set_row(0, 30)  # Header taller
+
+    output.seek(0)
+    return output
+
 # ====================== SESSION STATE ======================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "map_selected_station" not in st.session_state:
     st.session_state.map_selected_station = None
+if "user_name" not in st.session_state:
+    st.session_state.user_name = None
 
 # ====================== LOGIN & LOAD DATA ======================
 def login_page():
@@ -751,24 +842,24 @@ else:
             st.markdown("---")
             col_btn1, col_btn2, col_btn3 = st.columns([1, 3, 1])
             with col_btn2:
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    display_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
-                    if 'STATION' in filtered_df.columns:
-                        station_summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
-                            Total_FCOUNT='sum', Record_Count='count'
-                        ).sort_values('Total_FCOUNT', ascending=False).reset_index()
-                        station_summary.to_excel(writer, index=False, sheet_name='Station_Summary')
-                    if not error_sum.empty:
-                        error_sum.to_excel(writer, index=False, sheet_name='Error_Summary')
-                    if not cat_sum.empty:
-                        cat_sum.to_excel(writer, index=False, sheet_name='Category_Summary')
-                    if not jur_sum.empty:
-                        jur_sum.to_excel(writer, index=False, sheet_name='Jurisdiction_Summary')
-                output.seek(0)
+                # Prepare dataframes for Excel
+                excel_dfs = {"Filtered_Records": display_df[cols]}
+                if 'STATION' in filtered_df.columns:
+                    station_summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
+                        Total_FCOUNT='sum', Record_Count='count'
+                    ).sort_values('Total_FCOUNT', ascending=False).reset_index()
+                    excel_dfs["Station_Summary"] = station_summary
+                if not error_sum.empty:
+                    excel_dfs["Error_Summary"] = error_sum
+                if not cat_sum.empty:
+                    excel_dfs["Category_Summary"] = cat_sum
+                if not jur_sum.empty:
+                    excel_dfs["Jurisdiction_Summary"] = jur_sum
+
+                formatted_excel = create_formatted_excel(excel_dfs)
                 st.download_button(
                     label="⬇️ Download Professional Excel Report",
-                    data=output.getvalue(),
+                    data=formatted_excel.getvalue(),
                     file_name=f"Datalogger_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
@@ -900,18 +991,21 @@ else:
             st.markdown("---")
             col_fb1, col_fb2, col_fb3 = st.columns([1, 3, 1])
             with col_fb2:
-                fout = BytesIO()
-                with pd.ExcelWriter(fout, engine='xlsxwriter') as writer:
-                    fc_table.to_excel(writer, index=False, sheet_name='Division_Forecast')
-                    hist.rename(metric_label).reset_index().rename(
-                        columns={'index': 'Month', 'DATE': 'Month'}
-                    ).to_excel(writer, index=False, sheet_name='Monthly_History')
-                    if not group_table.empty:
-                        group_table.to_excel(writer, index=False, sheet_name='Group_Forecast')
-                fout.seek(0)
+                hist_df = hist.rename(metric_label).reset_index()
+                hist_df.columns = ['Month', metric_label]
+                hist_df['Month'] = hist_df['Month'].dt.strftime('%B %Y')
+
+                excel_dfs = {
+                    "Division_Forecast": fc_table,
+                    "Monthly_History": hist_df
+                }
+                if not group_table.empty:
+                    excel_dfs["Group_Forecast"] = group_table
+
+                formatted_excel = create_formatted_excel(excel_dfs)
                 st.download_button(
                     label="⬇️ Download Forecast Report",
-                    data=fout.getvalue(),
+                    data=formatted_excel.getvalue(),
                     file_name=f"Datalogger_Forecast_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
@@ -999,8 +1093,16 @@ else:
                                 color=color, fill=True, fill_color=color, fill_opacity=0.85, weight=2
                             ).add_to(m)
 
-                        map_key = f"folium_map_{len(filtered_df)}"
-                        map_return = st_folium(m, width=950, height=680, key=map_key, returned_objects=["last_object_clicked"])
+                        # Stable key to reduce unnecessary re-renders that can trigger SessionInfo issues
+                        map_key = f"folium_map_{hash(tuple(sorted(map_df['STATION'].tolist())))}"
+                        map_return = st_folium(
+                            m,
+                            width=950,
+                            height=680,
+                            key=map_key,
+                            returned_objects=["last_object_clicked"],
+                            use_container_width=False
+                        )
 
                         if map_return and map_return.get("last_object_clicked"):
                             lat = map_return["last_object_clicked"]["lat"]
@@ -1037,15 +1139,14 @@ else:
             st.markdown("---")
             col_btn1, col_btn2, col_btn3 = st.columns([1, 3, 1])
             with col_btn2:
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    display_df.to_excel(writer, index=False, sheet_name='Filtered_Records')
-                    if not jur_sum.empty:
-                        jur_sum.to_excel(writer, index=False, sheet_name='Jurisdiction_Summary')
-                output.seek(0)
+                excel_dfs = {"Filtered_Records": display_df[cols]}
+                if not jur_sum.empty:
+                    excel_dfs["Jurisdiction_Summary"] = jur_sum
+
+                formatted_excel = create_formatted_excel(excel_dfs)
                 st.download_button(
                     label="⬇️ Download Map Filtered Report",
-                    data=output.getvalue(),
+                    data=formatted_excel.getvalue(),
                     file_name=f"Map_Filtered_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
