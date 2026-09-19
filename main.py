@@ -189,7 +189,7 @@ ELECT_G_SSE = {
     "SGLA": "SSE/ELECT/KWV", "DLGN": "SSE/ELECT/KWV", "JTRD": "SSE/ELECT/KWV", "SGRE": "SSE/ELECT/KWV",
     "ARAG": "SSE/ELECT/KWV", "KVK": "SSE/ELECT/KWV", "MRJ": "SSE/ELECT/KWV", "MKPT": "SSE/ELECT/KWV",
     "AAG": "SSE/ELECT/KWV", "WKA": "SSE/ELECT/KWV", "MA": "SSE/ELECT/KWV", "WDS": "SSE/ELECT/KWV",
-    "WSD": "SSE/Elect/KWV", "MADHA": "SSE/ELECT/KWV", "PSS": "SSE/ELECT/KWV", "LAUL": "SSE/ELECT/KWV",
+    "WSD": "SSE/ELECT/KWV", "MADHA": "SSE/ELECT/KWV", "PSS": "SSE/ELECT/KWV", "LAUL": "SSE/ELECT/KWV",
     "CNHL": "SSE/ELECT/KWV", "MGO": "SSE/ELECT/KWV", "MSDG": "SSE/ELECT/KWV", "JVA": "SSE/ELECT/KWV",
     "GLV": "SSE/ELECT/KWV", "LNP": "SSE/ELECT/KWV", "AGDl": "SSE/ELECT/KWV", "BLWD": "SSE/ELECT/KWV",
     "BDK": "SSE/ELECT/KWV", "BLNK": "SSE/ELECT/KWV", "BBV": "SSE/ELECT/KWV", "AHI": "SSE/ELECT/KWV",
@@ -453,91 +453,116 @@ def forecast_by_group(df, group_col, how, horizon, top_n=10):
         rows.append(row)
     return pd.DataFrame(rows)
 
-# ====================== HELPER: FORMATTED EXCEL ======================
+# ====================== PROFESSIONAL EXCEL FORMATTER ======================
 def create_formatted_excel(dfs_dict):
     """
-    Create a professionally formatted Excel file with:
-    - Text wrapping
-    - All borders
-    - Center / left alignment
-    - Header styling
-    - Auto-adjusted column widths
+    Creates a clean, professional Excel file with:
+    - Text wrapping on every cell
+    - Full borders on all cells
+    - Proper alignment (center for numbers, left for text)
+    - Styled header row
+    - Auto column widths
+    - Frozen header
     """
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         workbook = writer.book
 
-        # Formats
-        header_fmt = workbook.add_format({
+        # ===== Formats =====
+        header_format = workbook.add_format({
             'bold': True,
             'text_wrap': True,
             'valign': 'vcenter',
             'align': 'center',
             'fg_color': '#003087',
-            'font_color': 'white',
+            'font_color': '#FFFFFF',
             'border': 1,
-            'border_color': '#000000'
+            'border_color': '#000000',
+            'font_size': 11
         })
-        cell_fmt = workbook.add_format({
+
+        cell_left = workbook.add_format({
             'text_wrap': True,
             'valign': 'vcenter',
             'align': 'left',
             'border': 1,
-            'border_color': '#000000'
+            'border_color': '#000000',
+            'font_size': 10
         })
-        center_fmt = workbook.add_format({
-            'text_wrap': True,
-            'valign': 'vcenter',
-            'align': 'center',
-            'border': 1,
-            'border_color': '#000000'
-        })
-        number_fmt = workbook.add_format({
+
+        cell_center = workbook.add_format({
             'text_wrap': True,
             'valign': 'vcenter',
             'align': 'center',
             'border': 1,
             'border_color': '#000000',
-            'num_format': '#,##0'
+            'font_size': 10
+        })
+
+        cell_number = workbook.add_format({
+            'text_wrap': True,
+            'valign': 'vcenter',
+            'align': 'center',
+            'border': 1,
+            'border_color': '#000000',
+            'num_format': '#,##0',
+            'font_size': 10
         })
 
         for sheet_name, df in dfs_dict.items():
             if df is None or df.empty:
                 continue
-            df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
-            worksheet = writer.sheets[sheet_name[:31]]
 
-            # Header row
-            for col_num, col_name in enumerate(df.columns):
-                worksheet.write(0, col_num, col_name, header_fmt)
+            safe_name = str(sheet_name)[:31]
+            df = df.copy().reset_index(drop=True)
+            df.to_excel(writer, index=False, sheet_name=safe_name, startrow=0)
 
-            # Data rows
-            for row_num in range(1, len(df) + 1):
-                for col_num, col_name in enumerate(df.columns):
-                    value = df.iloc[row_num - 1, col_num]
+            worksheet = writer.sheets[safe_name]
+
+            # Write header with formatting
+            for col_idx, col_name in enumerate(df.columns):
+                worksheet.write(0, col_idx, str(col_name), header_format)
+
+            # Write data rows with proper formatting
+            for row_idx in range(len(df)):
+                for col_idx, col_name in enumerate(df.columns):
+                    value = df.iloc[row_idx, col_idx]
+
                     if pd.isna(value):
-                        value = ""
-                    # Decide format
+                        worksheet.write(row_idx + 1, col_idx, "", cell_center)
+                        continue
+
+                    # Decide format based on data type
                     if isinstance(value, (int, float, np.integer, np.floating)):
-                        worksheet.write(row_num, col_num, value, number_fmt)
+                        worksheet.write(row_idx + 1, col_idx, value, cell_number)
                     else:
-                        worksheet.write(row_num, col_num, str(value), cell_fmt)
+                        # Use center for short text, left for longer text
+                        text_val = str(value)
+                        if len(text_val) <= 20:
+                            worksheet.write(row_idx + 1, col_idx, text_val, cell_center)
+                        else:
+                            worksheet.write(row_idx + 1, col_idx, text_val, cell_left)
 
-            # Auto column width (with wrap consideration)
-            for col_num, col_name in enumerate(df.columns):
-                max_len = max(
-                    len(str(col_name)),
-                    df.iloc[:, col_num].astype(str).str.len().max() if not df.empty else 0
-                )
-                # Cap width so text wrapping is useful
-                width = min(max(max_len + 2, 12), 45)
-                worksheet.set_column(col_num, col_num, width)
+            # Auto-adjust column widths
+            for col_idx, col_name in enumerate(df.columns):
+                # Calculate max content length
+                header_len = len(str(col_name))
+                if not df.empty:
+                    content_len = df.iloc[:, col_idx].astype(str).str.len().max()
+                else:
+                    content_len = 0
 
-            # Freeze header
+                max_len = max(header_len, content_len)
+                # Set reasonable width (min 12, max 50)
+                width = min(max(max_len + 3, 12), 50)
+                worksheet.set_column(col_idx, col_idx, width)
+
+            # Freeze the header row
             worksheet.freeze_panes(1, 0)
-            # Set reasonable row height for wrapped text
-            worksheet.set_default_row(18)
-            worksheet.set_row(0, 30)  # Header taller
+
+            # Set row heights for better readability
+            worksheet.set_row(0, 28)          # Header row taller
+            worksheet.set_default_row(20)    # Data rows
 
     output.seek(0)
     return output
@@ -842,7 +867,6 @@ else:
             st.markdown("---")
             col_btn1, col_btn2, col_btn3 = st.columns([1, 3, 1])
             with col_btn2:
-                # Prepare dataframes for Excel
                 excel_dfs = {"Filtered_Records": display_df[cols]}
                 if 'STATION' in filtered_df.columns:
                     station_summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
@@ -1093,7 +1117,6 @@ else:
                                 color=color, fill=True, fill_color=color, fill_opacity=0.85, weight=2
                             ).add_to(m)
 
-                        # Stable key to reduce unnecessary re-renders that can trigger SessionInfo issues
                         map_key = f"folium_map_{hash(tuple(sorted(map_df['STATION'].tolist())))}"
                         map_return = st_folium(
                             m,
