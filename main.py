@@ -10,8 +10,6 @@ import folium
 from streamlit_folium import st_folium
 from folium.plugins import Fullscreen
 
-# Optional: statsmodels gives proper exponential-smoothing models.
-# If it is not installed the app silently falls back to a linear-trend model.
 try:
     from statsmodels.tsa.holtwinters import ExponentialSmoothing
     STATSMODELS_AVAILABLE = True
@@ -173,12 +171,11 @@ ENGG_ADEN = {
     "MSDG": "ADEN/PVR", "JVA": "ADEN/PVR", "GLV": "ADEN/PVR", "LNP": "ADEN/PVR", "AGDl": "ADEN/PVR",
     "BLWD": "ADEN/PVR", "BDK": "ADEN/PVR", "BLNK": "ADEN/PVR", "BBV": "ADEN/PVR",
     "AHI": "ADEN/PVR", "BMNI": "ADEN/PVR", "BHLI": "ADEN/PVR",
-    "BTW": "ADEN/LUR", "DKY": "ADEN/LUR", "HGL": "ADEN/LUR", "LUR": "ADEN/LUR", "LC-2": "ADEN/LUR", "LC-4": "ADEN/LUR", "LC-5": "ADEN/LUR", "LC-6": "ADEN/LUR", "LC-55": "ADEN/LUR", "LC-59": "ADEN/LUR", "LC-47": "ADEN/LUR", "LC-39": "ADEN/LUR", "LC-34": "ADEN/LUR", "LC-10": "ADEN/LUR",
+    "BTW": "ADEN/LUR", "DKY": "ADEN/LUR", "HGL": "ADEN/LUR", "LUR": "ADEN/LUR",
     "OSA": "ADEN/LUR", "PJR": "ADEN/LUR", "SEI": "ADEN/LUR", "YSI": "ADEN/LUR",
     "DRSV": "ADEN/LUR", "MRX": "ADEN/LUR", "LTRR": "ADEN/LUR", "UMD": "ADEN/LUR",
     "UPI": "ADEN/LUR", "KCB": "ADEN/LUR", "TER": "ADEN/LUR", "PCP": "ADEN/LUR",
     "NEI": "ADEN/LUR", "KRMD": "ADEN/LUR", "BANL": "ADEN/LUR", "GANI": "ADEN/LUR",
-    "LC-22": "ADEN/PVR", "LC-24": "ADEN/PVR", "LC-70": "ADEN/PVR"
 }
 
 ELECT_G_SSE = {
@@ -311,33 +308,34 @@ SNT_ADSTE = {
 def get_jurisdiction(station, department):
     if pd.isna(station) or str(station).strip() == "":
         return "Unclassified"
-
     stn = str(station).strip().upper().replace(" ", "")
-
     if stn in ["HGSTN", "HGA", "HG-A"]:
         stn = "HG"
     if stn == "AGDL":
         stn = "AGDl"
-
     dept = str(department).strip().upper() if pd.notna(department) else ""
-
     if "OPTG" in dept or "OPERATING" in dept:
         return OPERATING_TI.get(stn, OPERATING_TI.get(station, "Unclassified"))
-
     if "ENGG" in dept or "ENGINEERING" in dept or "ADEN" in dept:
         return ENGG_ADEN.get(stn, ENGG_ADEN.get(station, "Unclassified"))
-
     if any(x in dept for x in ["TRD", "TRACTION", "OHE"]):
         return ELECT_TRD_SSE.get(stn, ELECT_TRD_SSE.get(station, "Unclassified"))
-
     if any(x in dept for x in ["ELECT", "ELECTRICAL", "SSE/ELECT"]):
         return ELECT_G_SSE.get(stn, ELECT_G_SSE.get(station, "Unclassified"))
-
     return SNT_ADSTE.get(stn, SNT_ADSTE.get(station, "Unclassified"))
 
 # ====================== FORECASTING ENGINE ======================
-def build_monthly_series(df, how="sum"):
-    """Aggregate records into a month-start time series of FCOUNT (sum) or record count."""
+def get_global_month_index(df):
+    if df is None or df.empty or 'DATE' not in df.columns:
+        return pd.DatetimeIndex([])
+    d = df.dropna(subset=['DATE'])
+    if d.empty:
+        return pd.DatetimeIndex([])
+    start = d['DATE'].min().to_period('M').to_timestamp()
+    end = d['DATE'].max().to_period('M').to_timestamp()
+    return pd.date_range(start, end, freq='MS')
+
+def build_monthly_series(df, how="sum", full_index=None):
     if df is None or df.empty or 'DATE' not in df.columns:
         return pd.Series(dtype=float)
     d = df.dropna(subset=['DATE'])
@@ -350,11 +348,46 @@ def build_monthly_series(df, how="sum"):
         if 'FCOUNT' not in d.columns:
             return pd.Series(dtype=float)
         series = d['FCOUNT'].resample('MS').sum().astype(float)
+    if full_index is not None and len(full_index) > 0:
+        series = series.reindex(full_index, fill_value=0.0)
     return series
 
+def trim_incomplete_current_month(series):
+    if series.empty:
+        return series
+    now = pd.Timestamp.now()
+    current_month_start = pd.Timestamp(year=now.year, month=now.month, day=1)
+    if series.index[-1] == current_month_start:
+        return series.iloc[:-1]
+    return series
+
+def write_styled_sheet(writer, df, sheet_name, header_color="#003087"):
+    workbook = writer.book
+    df.to_excel(writer, index=False, sheet_name=sheet_name, header=False, startrow=1)
+    worksheet = writer.sheets[sheet_name]
+    header_fmt = workbook.add_format({'bold': True, 'font_color': 'white', 'bg_color': header_color, 'border': 1, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True})
+    text_fmt = workbook.add_format({'border': 1, 'valign': 'vcenter'})
+    number_fmt = workbook.add_format({'border': 1, 'valign': 'vcenter', 'num_format': '#,##0'})
+    date_fmt = workbook.add_format({'border': 1, 'valign': 'vcenter', 'num_format': 'dd-mmm-yyyy'})
+    for col_idx, col_name in enumerate(df.columns):
+        worksheet.write(0, col_idx, str(col_name), header_fmt)
+        series = df[col_name]
+        if pd.api.types.is_datetime64_any_dtype(series) or str(col_name).strip().upper() == 'DATE':
+            cell_fmt = date_fmt
+        elif pd.api.types.is_numeric_dtype(series):
+            cell_fmt = number_fmt
+        else:
+            cell_fmt = text_fmt
+        content_len = int(series.astype(str).map(len).max()) if len(series) else 0
+        width = min(max(max(content_len, len(str(col_name))) + 2, 10), 45)
+        worksheet.set_column(col_idx, col_idx, width, cell_fmt)
+    worksheet.set_row(0, 30)
+    worksheet.freeze_panes(1, 0)
+    if len(df) > 0:
+        worksheet.autofilter(0, 0, len(df), len(df.columns) - 1)
+    return worksheet
 
 def _linear_forecast(series, periods):
-    """Least-squares straight-line trend — used when there is little history."""
     y = series.values.astype(float)
     x = np.arange(len(y), dtype=float)
     slope, intercept = np.polyfit(x, y, 1)
@@ -364,60 +397,40 @@ def _linear_forecast(series, periods):
     resid = float(np.std(y - fitted, ddof=0))
     return vals, "Linear trend regression", resid
 
-
 def forecast_series(series, periods=3):
-    """
-    Pick the best model the available history can support and return
-    (forecast Series, model name, residual std-dev used for the confidence band).
-    """
     series = series.dropna().astype(float)
     n = len(series)
     if n == 0:
         return pd.Series(dtype=float), "No data", 0.0
-
-    future_idx = pd.date_range(series.index[-1] + pd.DateOffset(months=1),
-                               periods=periods, freq='MS')
-
+    future_idx = pd.date_range(series.index[-1] + pd.DateOffset(months=1), periods=periods, freq='MS')
     if n < 4:
         vals = np.repeat(float(series.iloc[-1]), periods)
         method = "Naive (last observed month) — very little history"
         resid = float(series.std(ddof=0)) if n > 1 else 0.0
-
     elif STATSMODELS_AVAILABLE and n >= 24:
         try:
-            model = ExponentialSmoothing(
-                series, trend="add", seasonal="add", seasonal_periods=12,
-                damped_trend=True, initialization_method="estimated"
-            ).fit(optimized=True)
+            model = ExponentialSmoothing(series, trend="add", seasonal="add", seasonal_periods=12, damped_trend=True, initialization_method="estimated").fit(optimized=True)
             vals = np.asarray(model.forecast(periods), dtype=float)
             resid = float(np.std(series.values - np.asarray(model.fittedvalues, dtype=float), ddof=0))
             method = "Holt-Winters (damped trend + 12-month seasonality)"
         except Exception:
             vals, method, resid = _linear_forecast(series, periods)
-
     elif STATSMODELS_AVAILABLE and n >= 6:
         try:
-            model = ExponentialSmoothing(
-                series, trend="add", damped_trend=True,
-                initialization_method="estimated"
-            ).fit(optimized=True)
+            model = ExponentialSmoothing(series, trend="add", damped_trend=True, initialization_method="estimated").fit(optimized=True)
             vals = np.asarray(model.forecast(periods), dtype=float)
             resid = float(np.std(series.values - np.asarray(model.fittedvalues, dtype=float), ddof=0))
             method = "Holt exponential smoothing (damped trend)"
         except Exception:
             vals, method, resid = _linear_forecast(series, periods)
-
     else:
         vals, method, resid = _linear_forecast(series, periods)
         if not STATSMODELS_AVAILABLE:
             method += " (install statsmodels for smoothing models)"
-
     vals = np.clip(np.round(vals), 0, None)
     return pd.Series(vals, index=future_idx), method, resid
 
-
 def backtest_mape(series, horizon=3):
-    """Hold out the last `horizon` months, refit, and report MAPE %."""
     series = series.dropna().astype(float)
     if len(series) < horizon + 4:
         return None
@@ -430,9 +443,7 @@ def backtest_mape(series, horizon=3):
         return None
     return float(np.mean(np.abs((test.values[mask] - pred.values[:len(test)][mask]) / test.values[mask])) * 100)
 
-
-def forecast_by_group(df, group_col, how, horizon, top_n=10):
-    """Run the same model separately for the busiest `top_n` groups."""
+def forecast_by_group(df, group_col, how, horizon, top_n=10, full_index=None):
     if df.empty or group_col not in df.columns:
         return pd.DataFrame()
     if how == "count":
@@ -441,7 +452,8 @@ def forecast_by_group(df, group_col, how, horizon, top_n=10):
         ranking = df.groupby(group_col)['FCOUNT'].sum()
     rows = []
     for g in ranking.sort_values(ascending=False).head(top_n).index:
-        s = build_monthly_series(df[df[group_col] == g], how=how)
+        s = build_monthly_series(df[df[group_col] == g], how=how, full_index=full_index)
+        s = trim_incomplete_current_month(s)
         if s.empty:
             continue
         fc, method, _ = forecast_series(s, horizon)
@@ -453,127 +465,11 @@ def forecast_by_group(df, group_col, how, horizon, top_n=10):
         rows.append(row)
     return pd.DataFrame(rows)
 
-# ====================== PROFESSIONAL EXCEL FORMATTER ======================
-def create_formatted_excel(dfs_dict):
-    """
-    Creates a clean, professional Excel file with:
-    - Text wrapping on every cell
-    - Full borders on all cells
-    - Proper alignment (center for numbers, left for text)
-    - Styled header row
-    - Auto column widths
-    - Frozen header
-    """
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        workbook = writer.book
-
-        # ===== Formats =====
-        header_format = workbook.add_format({
-            'bold': True,
-            'text_wrap': True,
-            'valign': 'vcenter',
-            'align': 'center',
-            'fg_color': '#003087',
-            'font_color': '#FFFFFF',
-            'border': 1,
-            'border_color': '#000000',
-            'font_size': 11
-        })
-
-        cell_left = workbook.add_format({
-            'text_wrap': True,
-            'valign': 'vcenter',
-            'align': 'left',
-            'border': 1,
-            'border_color': '#000000',
-            'font_size': 10
-        })
-
-        cell_center = workbook.add_format({
-            'text_wrap': True,
-            'valign': 'vcenter',
-            'align': 'center',
-            'border': 1,
-            'border_color': '#000000',
-            'font_size': 10
-        })
-
-        cell_number = workbook.add_format({
-            'text_wrap': True,
-            'valign': 'vcenter',
-            'align': 'center',
-            'border': 1,
-            'border_color': '#000000',
-            'num_format': '#,##0',
-            'font_size': 10
-        })
-
-        for sheet_name, df in dfs_dict.items():
-            if df is None or df.empty:
-                continue
-
-            safe_name = str(sheet_name)[:31]
-            df = df.copy().reset_index(drop=True)
-            df.to_excel(writer, index=False, sheet_name=safe_name, startrow=0)
-
-            worksheet = writer.sheets[safe_name]
-
-            # Write header with formatting
-            for col_idx, col_name in enumerate(df.columns):
-                worksheet.write(0, col_idx, str(col_name), header_format)
-
-            # Write data rows with proper formatting
-            for row_idx in range(len(df)):
-                for col_idx, col_name in enumerate(df.columns):
-                    value = df.iloc[row_idx, col_idx]
-
-                    if pd.isna(value):
-                        worksheet.write(row_idx + 1, col_idx, "", cell_center)
-                        continue
-
-                    # Decide format based on data type
-                    if isinstance(value, (int, float, np.integer, np.floating)):
-                        worksheet.write(row_idx + 1, col_idx, value, cell_number)
-                    else:
-                        # Use center for short text, left for longer text
-                        text_val = str(value)
-                        if len(text_val) <= 20:
-                            worksheet.write(row_idx + 1, col_idx, text_val, cell_center)
-                        else:
-                            worksheet.write(row_idx + 1, col_idx, text_val, cell_left)
-
-            # Auto-adjust column widths
-            for col_idx, col_name in enumerate(df.columns):
-                # Calculate max content length
-                header_len = len(str(col_name))
-                if not df.empty:
-                    content_len = df.iloc[:, col_idx].astype(str).str.len().max()
-                else:
-                    content_len = 0
-
-                max_len = max(header_len, content_len)
-                # Set reasonable width (min 12, max 50)
-                width = min(max(max_len + 3, 12), 50)
-                worksheet.set_column(col_idx, col_idx, width)
-
-            # Freeze the header row
-            worksheet.freeze_panes(1, 0)
-
-            # Set row heights for better readability
-            worksheet.set_row(0, 28)          # Header row taller
-            worksheet.set_default_row(20)    # Data rows
-
-    output.seek(0)
-    return output
-
 # ====================== SESSION STATE ======================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "map_selected_station" not in st.session_state:
     st.session_state.map_selected_station = None
-if "user_name" not in st.session_state:
-    st.session_state.user_name = None
 
 # ====================== LOGIN & LOAD DATA ======================
 def login_page():
@@ -596,9 +492,7 @@ def login_page():
 def load_data_from_gsheet():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        credentials = ServiceAccountCredentials.from_json_keyfile_dict(
-            st.secrets["gcp_service_account"], scope
-        )
+        credentials = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
         client = gspread.authorize(credentials)
         sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
         df = pd.DataFrame(sheet.get_all_records())
@@ -606,8 +500,7 @@ def load_data_from_gsheet():
             st.error("Google Sheet is empty!")
             st.stop()
         df.columns = df.columns.str.strip()
-        df = df.loc[:, ~df.columns.str.lower().str.replace('.', '', regex=False)
-                    .str.contains(r'^(?:sl|sr)\s*no', regex=True)]
+        df = df.loc[:, ~df.columns.str.lower().str.replace('.', '', regex=False).str.contains(r'^(?:sl|sr)\s*no', regex=True)]
         if 'FCOUNT' in df.columns:
             df['FCOUNT'] = pd.to_numeric(df['FCOUNT'], errors='coerce').fillna(0).astype(int)
         if 'DATE' in df.columns:
@@ -615,9 +508,7 @@ def load_data_from_gsheet():
             df['MONTH'] = df['DATE'].dt.strftime('%B')
             df['YEAR_MONTH'] = df['DATE'].dt.to_period('M').astype(str)
         if 'STATION' in df.columns and 'DEPARTMENT' in df.columns:
-            df['JURISDICTION'] = df.apply(
-                lambda row: get_jurisdiction(row['STATION'], row['DEPARTMENT']), axis=1
-            )
+            df['JURISDICTION'] = df.apply(lambda row: get_jurisdiction(row['STATION'], row['DEPARTMENT']), axis=1)
         else:
             df['JURISDICTION'] = "Unclassified"
         return df
@@ -645,7 +536,6 @@ else:
 
     df_original = load_data_from_gsheet()
 
-    # ====================== SIDEBAR ======================
     with st.sidebar:
         st.header("🔧 Controls")
         if st.button("🔄 Refresh Data", type="primary", use_container_width=True):
@@ -691,9 +581,7 @@ else:
 
     st.divider()
 
-    # ====================== APPLY FILTERS ======================
     def apply_category_filters(df):
-        """Every filter except DATE range and MONTH (those would break the time series)."""
         out = df.copy()
         if selected_stations and 'STATION' in out.columns:
             out = out[out['STATION'].isin(selected_stations)]
@@ -713,41 +601,31 @@ else:
             out = out[out['STATION'] == st.session_state.map_selected_station]
         return out
 
-    # Forecast uses the full history (date/month filters deliberately not applied)
     forecast_base_df = apply_category_filters(df_original)
-
     filtered_df = forecast_base_df.copy()
     if 'DATE' in filtered_df.columns:
-        filtered_df = filtered_df[
-            (filtered_df['DATE'].dt.date >= from_date) &
-            (filtered_df['DATE'].dt.date <= to_date)
-        ]
+        filtered_df = filtered_df[(filtered_df['DATE'].dt.date >= from_date) & (filtered_df['DATE'].dt.date <= to_date)]
     if selected_months and 'MONTH' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['MONTH'].isin(selected_months)]
 
-    # ====================== PRE-COMPUTE SUMMARIES ======================
     cat_sum = pd.DataFrame()
     error_sum = pd.DataFrame()
     jur_sum = pd.DataFrame()
     if not filtered_df.empty:
         if 'DEPARTMENT' in filtered_df.columns:
-            cat_sum = (filtered_df.groupby('DEPARTMENT').size().reset_index(name='Cases').sort_values('Cases', ascending=False))
+            cat_sum = filtered_df.groupby('DEPARTMENT').size().reset_index(name='Cases').sort_values('Cases', ascending=False)
         if 'ERROR MAIN CATEGORY' in filtered_df.columns:
-            error_sum = (filtered_df.groupby('ERROR MAIN CATEGORY').size().reset_index(name='Cases').sort_values('Cases', ascending=False))
+            error_sum = filtered_df.groupby('ERROR MAIN CATEGORY').size().reset_index(name='Cases').sort_values('Cases', ascending=False)
         if 'JURISDICTION' in filtered_df.columns:
-            jur_sum = (filtered_df.groupby('JURISDICTION').size().reset_index(name='Cases').sort_values('Cases', ascending=False))
+            jur_sum = filtered_df.groupby('JURISDICTION').size().reset_index(name='Cases').sort_values('Cases', ascending=False)
 
     st.divider()
 
-    # ====================== TABS ======================
-    tab_overview, tab_forecast, tab_map = st.tabs(
-        ["📊 Overview Dashboard", "🔮 Forecast (3 Months)", "🗺️ Map View"]
-    )
+    tab_overview, tab_forecast, tab_map = st.tabs(["📊 Overview Dashboard", "🔮 Forecast (3 Months)", "🗺️ Map View"])
 
     with tab_overview:
         st.subheader("📊 Overview Dashboard")
 
-        # KPI Metrics
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             st.metric("Total Records", f"{len(filtered_df):,}")
@@ -770,14 +648,12 @@ else:
 
         st.markdown("---")
 
-        # Top 15 + Station Summary
         col_g1, col_g2 = st.columns([3, 2])
         with col_g1:
             st.markdown('<p class="section-header">Top 15 Stations by FCOUNT</p>', unsafe_allow_html=True)
             if not filtered_df.empty and 'STATION' in filtered_df.columns:
                 top15 = filtered_df.groupby('STATION')['FCOUNT'].sum().nlargest(15).reset_index()
-                fig = px.bar(top15, x='STATION', y='FCOUNT', text='FCOUNT', color='FCOUNT',
-                             color_continuous_scale='RdYlGn_r')
+                fig = px.bar(top15, x='STATION', y='FCOUNT', text='FCOUNT', color='FCOUNT', color_continuous_scale='RdYlGn_r')
                 fig.update_layout(height=480, xaxis_tickangle=45)
                 st.plotly_chart(fig, use_container_width=True)
         with col_g2:
@@ -786,55 +662,137 @@ else:
                 summary = filtered_df.groupby('STATION')['FCOUNT'].agg(Total_FCOUNT='sum', Records='count').sort_values('Total_FCOUNT', ascending=False)
                 st.dataframe(summary.style.format({"Total_FCOUNT": "{:,}", "Records": "{:,}"}).background_gradient(subset=['Total_FCOUNT'], cmap='YlOrRd'), use_container_width=True)
 
-        # Distribution Charts (Horizontal Bars)
         st.markdown("---")
         st.markdown('<p class="section-header">📊 Distribution Charts</p>', unsafe_allow_html=True)
 
         col_c1, col_c2, col_c3 = st.columns(3)
-
         with col_c1:
             st.markdown("**Department-wise**")
             if not cat_sum.empty:
                 dept_plot = cat_sum.sort_values('Cases', ascending=True)
-                fig_dept = px.bar(dept_plot, x='Cases', y='DEPARTMENT', orientation='h',
-                                  text='Cases', color='Cases', color_continuous_scale='Blues')
+                fig_dept = px.bar(dept_plot, x='Cases', y='DEPARTMENT', orientation='h', text='Cases', color='Cases', color_continuous_scale='Blues')
                 fig_dept.update_traces(textposition='outside', cliponaxis=False)
-                fig_dept.update_layout(height=400, showlegend=False, coloraxis_showscale=False,
-                                       xaxis_title="Cases", yaxis_title="",
-                                       margin=dict(t=30, b=30, l=20, r=50))
+                fig_dept.update_layout(height=400, showlegend=False, coloraxis_showscale=False, xaxis_title="Cases", yaxis_title="", margin=dict(t=30, b=30, l=20, r=50))
                 st.plotly_chart(fig_dept, use_container_width=True)
             else:
                 st.info("No Department data")
-
         with col_c2:
             st.markdown("**Error Main Category**")
             if not error_sum.empty:
                 err_plot = error_sum.head(12).sort_values('Cases', ascending=True)
-                fig_err = px.bar(err_plot, x='Cases', y='ERROR MAIN CATEGORY', orientation='h',
-                                 text='Cases', color='Cases', color_continuous_scale='Oranges')
+                fig_err = px.bar(err_plot, x='Cases', y='ERROR MAIN CATEGORY', orientation='h', text='Cases', color='Cases', color_continuous_scale='Oranges')
                 fig_err.update_traces(textposition='outside', cliponaxis=False)
-                fig_err.update_layout(height=400, showlegend=False, coloraxis_showscale=False,
-                                      xaxis_title="Cases", yaxis_title="",
-                                      margin=dict(t=30, b=30, l=20, r=50))
+                fig_err.update_layout(height=400, showlegend=False, coloraxis_showscale=False, xaxis_title="Cases", yaxis_title="", margin=dict(t=30, b=30, l=20, r=50))
                 st.plotly_chart(fig_err, use_container_width=True)
             else:
                 st.info("No Error data")
-
         with col_c3:
             st.markdown("**Jurisdiction-wise**")
             if not jur_sum.empty:
                 jur_plot = jur_sum.head(12).sort_values('Cases', ascending=True)
-                fig_jur = px.bar(jur_plot, x='Cases', y='JURISDICTION', orientation='h',
-                                 text='Cases', color='Cases', color_continuous_scale='Teal')
+                fig_jur = px.bar(jur_plot, x='Cases', y='JURISDICTION', orientation='h', text='Cases', color='Cases', color_continuous_scale='Teal')
                 fig_jur.update_traces(textposition='outside', cliponaxis=False)
-                fig_jur.update_layout(height=400, showlegend=False, coloraxis_showscale=False,
-                                      xaxis_title="Cases", yaxis_title="",
-                                      margin=dict(t=30, b=30, l=20, r=50))
+                fig_jur.update_layout(height=400, showlegend=False, coloraxis_showscale=False, xaxis_title="Cases", yaxis_title="", margin=dict(t=30, b=30, l=20, r=50))
                 st.plotly_chart(fig_jur, use_container_width=True)
             else:
                 st.info("No Jurisdiction data")
 
-        # Summary Tables
+        # ====================== ANIMATED TIME SERIES ======================
+        st.markdown("---")
+        st.markdown('<p class="section-header">🎬 Animated Monthly Cases / FCOUNT by Station</p>', unsafe_allow_html=True)
+
+        if filtered_df.empty or 'STATION' not in filtered_df.columns or 'DATE' not in filtered_df.columns:
+            st.warning("Not enough data for animation.")
+        else:
+            anim_df = filtered_df.dropna(subset=['DATE', 'STATION']).copy()
+
+            col_anim1, col_anim2, col_anim3 = st.columns([2, 2, 2])
+            with col_anim1:
+                metric = st.radio("Metric to animate", ["Number of Cases", "Total FCOUNT"], horizontal=True, key="anim_metric")
+            with col_anim2:
+                top_n_anim = st.slider("Show Top N stations", 5, 25, 12, key="anim_topn")
+            with col_anim3:
+                anim_speed = st.select_slider("Animation Speed", options=["Very Slow", "Slow", "Normal", "Fast"], value="Slow", key="anim_speed")
+
+            speed_map = {"Very Slow": 1800, "Slow": 1400, "Normal": 1000, "Fast": 700}
+            frame_duration = speed_map[anim_speed]
+            transition_duration = int(frame_duration * 0.55)
+
+            if metric == "Number of Cases":
+                monthly = anim_df.groupby(['STATION', pd.Grouper(key='DATE', freq='MS')]).size().reset_index(name='Value')
+                y_label = "Cases"
+            else:
+                monthly = anim_df.groupby(['STATION', pd.Grouper(key='DATE', freq='MS')])['FCOUNT'].sum().reset_index(name='Value')
+                y_label = "FCOUNT"
+
+            monthly['Month'] = monthly['DATE'].dt.strftime('%b %Y')
+            monthly = monthly.sort_values('DATE')
+
+            # Fixed order: Highest → Lowest total
+            station_order = (
+                monthly.groupby('STATION')['Value']
+                .sum()
+                .sort_values(ascending=False)
+                .head(top_n_anim)
+                .index
+                .tolist()
+            )
+            monthly = monthly[monthly['STATION'].isin(station_order)]
+            monthly['STATION'] = pd.Categorical(monthly['STATION'], categories=station_order, ordered=True)
+            monthly = monthly.sort_values(['DATE', 'STATION'])
+
+            if monthly.empty:
+                st.info("No data available for the selected metric / stations.")
+            else:
+                fig_anim = px.bar(
+                    monthly,
+                    x='STATION',
+                    y='Value',
+                    color='Value',
+                    animation_frame='Month',
+                    animation_group='STATION',
+                    range_y=[0, monthly['Value'].max() * 1.18],
+                    color_continuous_scale='RdYlGn_r',
+                    labels={'Value': y_label, 'STATION': 'Station'},
+                    title=f"Monthly {y_label} by Station — Animated (Highest → Lowest)",
+                    text='Value'
+                )
+
+                fig_anim.update_traces(
+                    texttemplate='%{text:,}',
+                    textposition='outside',
+                    cliponaxis=False
+                )
+
+                fig_anim.update_layout(
+                    height=600,
+                    xaxis_tickangle=-45,
+                    coloraxis_showscale=False,
+                    margin=dict(t=70, b=120),
+                    title_x=0.5,
+                    xaxis={'categoryorder': 'array', 'categoryarray': station_order}
+                )
+
+                fig_anim.layout.updatemenus[0].buttons[0].args[1]['frame']['duration'] = frame_duration
+                fig_anim.layout.updatemenus[0].buttons[0].args[1]['transition']['duration'] = transition_duration
+
+                st.plotly_chart(fig_anim, use_container_width=True, config={'displaylogo': False})
+                st.caption(f"Current speed: **{anim_speed}** • Bars fixed Highest → Lowest • Use ▶️ Play button")
+
+                st.markdown("")
+                col_dl1, col_dl2, col_dl3 = st.columns([1, 2, 1])
+                with col_dl2:
+                    html_bytes = fig_anim.to_html(full_html=True, include_plotlyjs='cdn', config={'displaylogo': False, 'responsive': True}).encode('utf-8')
+                    st.download_button(
+                        label="⬇️ Download Animation (Interactive HTML)",
+                        data=html_bytes,
+                        file_name=f"Station_Animation_{y_label}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.html",
+                        mime="text/html",
+                        type="primary",
+                        use_container_width=True
+                    )
+
+        # ====================== SUMMARY TABLES ======================
         st.markdown("---")
         col_s1, col_s2, col_s3 = st.columns(3)
         with col_s1:
@@ -867,23 +825,22 @@ else:
             st.markdown("---")
             col_btn1, col_btn2, col_btn3 = st.columns([1, 3, 1])
             with col_btn2:
-                excel_dfs = {"Filtered_Records": display_df[cols]}
-                if 'STATION' in filtered_df.columns:
-                    station_summary = filtered_df.groupby('STATION')['FCOUNT'].agg(
-                        Total_FCOUNT='sum', Record_Count='count'
-                    ).sort_values('Total_FCOUNT', ascending=False).reset_index()
-                    excel_dfs["Station_Summary"] = station_summary
-                if not error_sum.empty:
-                    excel_dfs["Error_Summary"] = error_sum
-                if not cat_sum.empty:
-                    excel_dfs["Category_Summary"] = cat_sum
-                if not jur_sum.empty:
-                    excel_dfs["Jurisdiction_Summary"] = jur_sum
-
-                formatted_excel = create_formatted_excel(excel_dfs)
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    write_styled_sheet(writer, display_df[cols], 'Filtered_Records')
+                    if 'STATION' in filtered_df.columns:
+                        station_summary = filtered_df.groupby('STATION')['FCOUNT'].agg(Total_FCOUNT='sum', Record_Count='count').sort_values('Total_FCOUNT', ascending=False).reset_index()
+                        write_styled_sheet(writer, station_summary, 'Station_Summary')
+                    if not error_sum.empty:
+                        write_styled_sheet(writer, error_sum, 'Error_Summary')
+                    if not cat_sum.empty:
+                        write_styled_sheet(writer, cat_sum, 'Category_Summary')
+                    if not jur_sum.empty:
+                        write_styled_sheet(writer, jur_sum, 'Jurisdiction_Summary')
+                output.seek(0)
                 st.download_button(
                     label="⬇️ Download Professional Excel Report",
-                    data=formatted_excel.getvalue(),
+                    data=output.getvalue(),
                     file_name=f"Datalogger_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
@@ -893,8 +850,7 @@ else:
     # ====================== FORECAST TAB ======================
     with tab_forecast:
         st.subheader("🔮 Forecast — next 1 to 3 months")
-        st.caption("The model uses the **complete** history of the sheet (the FROM/TO date and MONTH "
-                   "filters are ignored here). All other filters do apply.")
+        st.caption("The model uses the **complete** history of the sheet (the FROM/TO date and MONTH filters are ignored here). All other filters do apply.")
 
         fc1, fc2, fc3, fc4 = st.columns([2, 2, 2, 2])
         with fc1:
@@ -902,20 +858,23 @@ else:
         with fc2:
             metric_choice = st.selectbox("Metric to predict", ["Total FCOUNT", "Number of cases"], key="fc_metric")
         with fc3:
-            level = st.selectbox("Break-up by",
-                                 ["Division total (no break-up)", "Station", "Department", "Jurisdiction", "Error Main Category"],
-                                 key="fc_level")
+            level = st.selectbox("Break-up by", ["Division total (no break-up)", "Station", "Department", "Jurisdiction", "Error Main Category"], key="fc_level")
         with fc4:
             top_n = st.number_input("Top N groups", min_value=3, max_value=25, value=10, step=1, key="fc_topn")
 
         how = "sum" if metric_choice == "Total FCOUNT" else "count"
         metric_label = "FCOUNT" if how == "sum" else "Cases"
 
-        hist = build_monthly_series(forecast_base_df, how=how)
+        global_month_index = get_global_month_index(forecast_base_df)
+        hist_raw = build_monthly_series(forecast_base_df, how=how, full_index=global_month_index)
+        hist = trim_incomplete_current_month(hist_raw)
+        trimmed_partial_month = len(hist) < len(hist_raw)
 
         if hist.empty:
             st.warning("Not enough dated records to build a forecast.")
         else:
+            if trimmed_partial_month:
+                st.caption(f"ℹ️ **{hist_raw.index[-1].strftime('%B %Y')}** is still in progress in the sheet, so it's excluded from training and predicted instead.")
             fc, method, resid = forecast_series(hist, horizon)
             mape = backtest_mape(hist, horizon=min(3, max(1, len(hist) // 4)))
 
@@ -930,11 +889,8 @@ else:
                 change = ((fc.mean() - hist.iloc[-1]) / hist.iloc[-1] * 100) if hist.iloc[-1] else 0
                 st.metric("vs last month", f"{change:+.1f}%")
 
-            st.info(f"**Model used:** {method}"
-                    + (f"  •  **Back-test accuracy (MAPE):** {mape:.1f}% error" if mape is not None
-                       else "  •  Back-test skipped (history too short)"))
+            st.info(f"**Model used:** {method}" + (f"  •  **Back-test accuracy (MAPE):** {mape:.1f}% error" if mape is not None else "  •  Back-test skipped (history too short)"))
 
-            # ---- Chart: history + forecast + confidence band ----
             anchor_x = [hist.index[-1]] + list(fc.index)
             anchor_y = [float(hist.iloc[-1])] + [float(v) for v in fc.values]
             margins = [0.0] + [1.96 * resid * np.sqrt(i + 1) for i in range(len(fc))]
@@ -942,28 +898,12 @@ else:
             lower = [max(0.0, y - m) for y, m in zip(anchor_y, margins)]
 
             fig_fc = go.Figure()
-            fig_fc.add_trace(go.Scatter(
-                x=list(anchor_x) + list(anchor_x)[::-1],
-                y=upper + lower[::-1],
-                fill='toself', fillcolor='rgba(255,153,51,0.18)',
-                line=dict(color='rgba(0,0,0,0)'), hoverinfo='skip',
-                name='95% confidence range'
-            ))
-            fig_fc.add_trace(go.Scatter(
-                x=hist.index, y=hist.values, mode='lines+markers', name='Actual',
-                line=dict(color='#003087', width=3), marker=dict(size=8)
-            ))
-            fig_fc.add_trace(go.Scatter(
-                x=anchor_x, y=anchor_y, mode='lines+markers+text', name='Forecast',
-                line=dict(color='#FF9933', width=3, dash='dash'), marker=dict(size=10),
-                text=[""] + [f"{int(v):,}" for v in fc.values], textposition='top center'
-            ))
-            fig_fc.update_layout(height=470, hovermode='x unified',
-                                 xaxis_title="Month", yaxis_title=f"Monthly {metric_label}",
-                                 legend=dict(orientation='h', y=1.12))
+            fig_fc.add_trace(go.Scatter(x=list(anchor_x) + list(anchor_x)[::-1], y=upper + lower[::-1], fill='toself', fillcolor='rgba(255,153,51,0.18)', line=dict(color='rgba(0,0,0,0)'), hoverinfo='skip', name='95% confidence range'))
+            fig_fc.add_trace(go.Scatter(x=hist.index, y=hist.values, mode='lines+markers', name='Actual', line=dict(color='#003087', width=3), marker=dict(size=8)))
+            fig_fc.add_trace(go.Scatter(x=anchor_x, y=anchor_y, mode='lines+markers+text', name='Forecast', line=dict(color='#FF9933', width=3, dash='dash'), marker=dict(size=10), text=[""] + [f"{int(v):,}" for v in fc.values], textposition='top center'))
+            fig_fc.update_layout(height=470, hovermode='x unified', xaxis_title="Month", yaxis_title=f"Monthly {metric_label}", legend=dict(orientation='h', y=1.12))
             st.plotly_chart(fig_fc, use_container_width=True, config={'displaylogo': False})
 
-            # ---- Division-level forecast table ----
             fc_table = pd.DataFrame({
                 "Month": [d.strftime('%B %Y') for d in fc.index],
                 f"Predicted {metric_label}": [int(v) for v in fc.values],
@@ -971,73 +911,47 @@ else:
                 "Upper estimate": [int(v + 1.96 * resid * np.sqrt(i + 1)) for i, v in enumerate(fc.values)],
             })
             st.markdown('<p class="section-header">Predicted values</p>', unsafe_allow_html=True)
-            st.dataframe(fc_table.style.format({
-                f"Predicted {metric_label}": "{:,}", "Lower estimate": "{:,}", "Upper estimate": "{:,}"
-            }), use_container_width=True, hide_index=True)
+            st.dataframe(fc_table.style.format({f"Predicted {metric_label}": "{:,}", "Lower estimate": "{:,}", "Upper estimate": "{:,}"}), use_container_width=True, hide_index=True)
 
-            # ---- Group-level forecast ----
-            group_map = {
-                "Station": "STATION",
-                "Department": "DEPARTMENT",
-                "Jurisdiction": "JURISDICTION",
-                "Error Main Category": "ERROR MAIN CATEGORY",
-            }
+            group_map = {"Station": "STATION", "Department": "DEPARTMENT", "Jurisdiction": "JURISDICTION", "Error Main Category": "ERROR MAIN CATEGORY"}
             group_table = pd.DataFrame()
             if level in group_map:
                 gcol = group_map[level]
                 st.markdown("---")
-                st.markdown(f'<p class="section-header">Forecast by {level} (top {int(top_n)})</p>',
-                            unsafe_allow_html=True)
+                st.markdown(f'<p class="section-header">Forecast by {level} (top {int(top_n)})</p>', unsafe_allow_html=True)
                 with st.spinner("Fitting models group by group..."):
-                    group_table = forecast_by_group(forecast_base_df, gcol, how, horizon, int(top_n))
-
+                    group_table = forecast_by_group(forecast_base_df, gcol, how, horizon, int(top_n), full_index=global_month_index)
                 if group_table.empty:
                     st.info("Not enough history for a group-wise forecast.")
                 else:
                     num_cols = [c for c in group_table.columns if c not in (gcol, "Model")]
-                    st.dataframe(
-                        group_table.style.format({c: "{:,}" for c in num_cols})
-                        .background_gradient(subset=["Forecast total"], cmap='YlOrRd'),
-                        use_container_width=True, hide_index=True
-                    )
-
+                    st.dataframe(group_table.style.format({c: "{:,}" for c in num_cols}).background_gradient(subset=["Forecast total"], cmap='YlOrRd'), use_container_width=True, hide_index=True)
                     plot_df = group_table.sort_values("Forecast total", ascending=True)
-                    fig_grp = px.bar(plot_df, x="Forecast total", y=gcol, orientation='h',
-                                     text="Forecast total", color="Forecast total",
-                                     color_continuous_scale='RdYlGn_r')
+                    fig_grp = px.bar(plot_df, x="Forecast total", y=gcol, orientation='h', text="Forecast total", color="Forecast total", color_continuous_scale='RdYlGn_r')
                     fig_grp.update_traces(textposition='outside', cliponaxis=False)
-                    fig_grp.update_layout(height=480, coloraxis_showscale=False,
-                                          xaxis_title=f"Predicted {metric_label} (next {horizon} months)",
-                                          yaxis_title="", margin=dict(t=30, b=30, l=20, r=60))
+                    fig_grp.update_layout(height=480, coloraxis_showscale=False, xaxis_title=f"Predicted {metric_label} (next {horizon} months)", yaxis_title="", margin=dict(t=30, b=30, l=20, r=60))
                     st.plotly_chart(fig_grp, use_container_width=True)
 
-            # ---- Download forecast ----
             st.markdown("---")
             col_fb1, col_fb2, col_fb3 = st.columns([1, 3, 1])
             with col_fb2:
-                hist_df = hist.rename(metric_label).reset_index()
-                hist_df.columns = ['Month', metric_label]
-                hist_df['Month'] = hist_df['Month'].dt.strftime('%B %Y')
-
-                excel_dfs = {
-                    "Division_Forecast": fc_table,
-                    "Monthly_History": hist_df
-                }
-                if not group_table.empty:
-                    excel_dfs["Group_Forecast"] = group_table
-
-                formatted_excel = create_formatted_excel(excel_dfs)
+                fout = BytesIO()
+                monthly_history_df = hist.rename(metric_label).reset_index().rename(columns={'index': 'Month', 'DATE': 'Month'})
+                with pd.ExcelWriter(fout, engine='xlsxwriter') as writer:
+                    write_styled_sheet(writer, fc_table, 'Division_Forecast')
+                    write_styled_sheet(writer, monthly_history_df, 'Monthly_History')
+                    if not group_table.empty:
+                        write_styled_sheet(writer, group_table, 'Group_Forecast')
+                fout.seek(0)
                 st.download_button(
                     label="⬇️ Download Forecast Report",
-                    data=formatted_excel.getvalue(),
+                    data=fout.getvalue(),
                     file_name=f"Datalogger_Forecast_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
                     use_container_width=True
                 )
-
-            st.caption("⚠️ Forecasts are statistical projections from past data only. They assume conditions "
-                       "stay broadly the same and should support — not replace — field judgement.")
+            st.caption("⚠️ Forecasts are statistical projections from past data only. They assume conditions stay broadly the same and should support — not replace — field judgement.")
 
     with tab_map:
         st.subheader("🗺️ Interactive Map View - Click on Station to Filter")
@@ -1051,7 +965,6 @@ else:
             st.success(f"📍 Currently viewing: **{st.session_state.map_selected_station}**")
 
         st.markdown("<br>", unsafe_allow_html=True)
-
         col_m1, col_m2 = st.columns([3, 2])
 
         with col_m1:
@@ -1060,7 +973,6 @@ else:
             else:
                 map_agg = filtered_df.groupby('STATION')['FCOUNT'].sum().reset_index()
                 map_data = []
-
                 for _, row in map_agg.iterrows():
                     station_name = str(row['STATION']).strip().upper()
                     best_match = None
@@ -1069,70 +981,33 @@ else:
                             best_match = info
                             break
                     if best_match:
-                        map_data.append({
-                            'STATION': row['STATION'],
-                            'FCOUNT': row['FCOUNT'],
-                            'lat': best_match['lat'],
-                            'lon': best_match['lon']
-                        })
-
+                        map_data.append({'STATION': row['STATION'], 'FCOUNT': row['FCOUNT'], 'lat': best_match['lat'], 'lon': best_match['lon']})
                 map_df = pd.DataFrame(map_data)
 
                 if not map_df.empty:
                     with st.spinner("Rendering map..."):
                         m = folium.Map(location=[17.85, 75.80], zoom_start=7.2, tiles=None, control_scale=True)
-
                         carto_key = st.secrets["carto"]["api_key"]
-                        folium.TileLayer(
-                            tiles=f"https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}.png?key={carto_key}",
-                            name="🗺️ Light Base",
-                            attr='© OpenStreetMap © CARTO',
-                            control=True, subdomains="abcd", max_zoom=20
-                        ).add_to(m)
-
+                        folium.TileLayer(tiles=f"https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}.png?key={carto_key}", name="🗺️ Light Base", attr='© OpenStreetMap © CARTO', control=True, subdomains="abcd", max_zoom=20).add_to(m)
                         folium.TileLayer("OpenStreetMap", name="🌍 OpenStreetMap", control=True).add_to(m)
-                        folium.TileLayer(
-                            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-                            attr="Esri", name="🌐 Satellite", control=True
-                        ).add_to(m)
-
+                        folium.TileLayer(tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", attr="Esri", name="🌐 Satellite", control=True).add_to(m)
                         folium.LayerControl(position="topright", collapsed=False).add_to(m)
                         Fullscreen().add_to(m)
 
                         for _, row in map_df.iterrows():
                             fcount = int(row['FCOUNT'])
-                            if fcount < 600:
-                                color = "green"
-                            elif fcount <= 1200:
-                                color = "orange"
-                            else:
-                                color = "darkred"
+                            color = "green" if fcount < 600 else "orange" if fcount <= 1200 else "darkred"
                             radius = 8 + min(fcount / 50, 25)
+                            folium.CircleMarker(location=[row['lat'], row['lon']], radius=radius, popup=f"<h4>{row['STATION']}</h4><b>Total FCOUNT:</b> {fcount:,}", tooltip=f"{row['STATION']} ({fcount:,})", color=color, fill=True, fill_color=color, fill_opacity=0.85, weight=2).add_to(m)
 
-                            folium.CircleMarker(
-                                location=[row['lat'], row['lon']],
-                                radius=radius,
-                                popup=f"<h4>{row['STATION']}</h4><b>Total FCOUNT:</b> {fcount:,}",
-                                tooltip=f"{row['STATION']} ({fcount:,})",
-                                color=color, fill=True, fill_color=color, fill_opacity=0.85, weight=2
-                            ).add_to(m)
-
-                        map_key = f"folium_map_{hash(tuple(sorted(map_df['STATION'].tolist())))}"
-                        map_return = st_folium(
-                            m,
-                            width=950,
-                            height=680,
-                            key=map_key,
-                            returned_objects=["last_object_clicked"],
-                            use_container_width=False
-                        )
+                        map_key = f"folium_map_{len(filtered_df)}"
+                        map_return = st_folium(m, width=950, height=680, key=map_key, returned_objects=["last_object_clicked"])
 
                         if map_return and map_return.get("last_object_clicked"):
                             lat = map_return["last_object_clicked"]["lat"]
                             lon = map_return["last_object_clicked"]["lng"]
                             map_df['dist'] = ((map_df['lat'] - lat)**2 + (map_df['lon'] - lon)**2)**0.5
                             selected_station = map_df.loc[map_df['dist'].idxmin(), 'STATION']
-
                             if st.session_state.map_selected_station != selected_station:
                                 st.session_state.map_selected_station = selected_station
                                 st.rerun()
@@ -1162,14 +1037,15 @@ else:
             st.markdown("---")
             col_btn1, col_btn2, col_btn3 = st.columns([1, 3, 1])
             with col_btn2:
-                excel_dfs = {"Filtered_Records": display_df[cols]}
-                if not jur_sum.empty:
-                    excel_dfs["Jurisdiction_Summary"] = jur_sum
-
-                formatted_excel = create_formatted_excel(excel_dfs)
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    write_styled_sheet(writer, display_df[cols], 'Filtered_Records')
+                    if not jur_sum.empty:
+                        write_styled_sheet(writer, jur_sum, 'Jurisdiction_Summary')
+                output.seek(0)
                 st.download_button(
                     label="⬇️ Download Map Filtered Report",
-                    data=formatted_excel.getvalue(),
+                    data=output.getvalue(),
                     file_name=f"Map_Filtered_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
