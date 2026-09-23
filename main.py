@@ -35,33 +35,21 @@ st.markdown("""
     font-family: 'Rajdhani', sans-serif;
 }
 
-.dashboard-title {
-    font-family: 'Orbitron', sans-serif !important;
-    font-size: 2.9rem !important;
-    font-weight: 900 !important;
-    background: linear-gradient(90deg, #0277bd, #0288d1, #01579b);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    text-align: center;
-    letter-spacing: 3px;
-    margin-bottom: 0.1rem;
-}
-
-.subtitle {
+.brand-line {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 1.35rem;
+    font-size: 1.5rem;
     color: #01579b;
     text-align: center;
-    font-weight: 600;
-    letter-spacing: 2px;
-    margin-top: -0.3rem;
+    font-weight: 700;
+    letter-spacing: 2.5px;
+    margin: 0.6rem 0 0.2rem 0;
 }
 
 .train-emoji-container {
     text-align: center;
-    margin: 6px 0 16px 0;
+    margin: 8px 0 14px 0;
     overflow: hidden;
-    height: 48px;
+    height: 42px;
     position: relative;
     width: 100%;
 }
@@ -70,8 +58,8 @@ st.markdown("""
     display: inline-block;
     white-space: nowrap;
     animation: moveTrainLine 12s linear infinite;
-    font-size: 2.1rem;
-    letter-spacing: 18px;
+    font-size: 1.9rem;
+    letter-spacing: 16px;
 }
 
 @keyframes moveTrainLine {
@@ -206,6 +194,42 @@ section[data-testid="stSidebar"] .stMarkdown h2 {
 
 .stCaption, .stMarkdown p {
     color: #37474f !important;
+}
+
+/* ===== DRISHTI Header Styles ===== */
+.drishti-title {
+    font-family: 'Orbitron', sans-serif !important;
+    font-size: 3.8rem !important;
+    font-weight: 900 !important;
+    letter-spacing: 14px !important;
+    background: linear-gradient(90deg, #01579b, #0277bd, #0288d1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-align: center;
+    margin: 0.8rem 0 0.3rem 0;
+}
+
+.drishti-fullform {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #37474f;
+    text-align: center;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.8rem;
+}
+
+.drishti-fullform b {
+    color: #01579b;
+    font-weight: 800;
+}
+
+.drishti-line {
+    width: 180px;
+    height: 3px;
+    margin: 0 auto 1rem auto;
+    background: linear-gradient(90deg, transparent, #0288d1, #ffc107, #0288d1, transparent);
+    border-radius: 10px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -694,9 +718,16 @@ else:
     with col2:
         st.image(IR_LOGO_URL, width=220)
 
-    st.markdown('<h1 class="dashboard-title">DATA LOGGER EXCEPTIONAL REPORT</h1>', unsafe_allow_html=True)
+    # ===== CLEAN AESTHETIC DRISHTI HEADER =====
+    st.markdown('<div class="drishti-title">Data-Logger</div>', unsafe_allow_html=True)
+    st.markdown('<div class="drishti-line"></div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="drishti-fullform">
+        <b>Data-Logger Exceptional Report</b>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # 4 Moving Trains
+    # Moving trains
     st.markdown("""
     <div class="train-emoji-container">
         <div class="train-track">
@@ -705,7 +736,10 @@ else:
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown('<p class="subtitle">Central Railway • Solapur Division • Safety Branch</p>', unsafe_allow_html=True)
+    st.markdown(
+        '<p class="brand-line">Central Railway &nbsp;•&nbsp; Solapur Division &nbsp;•&nbsp; Safety Branch</p>',
+        unsafe_allow_html=True
+    )
     st.caption(f"**Logged in as:** {st.session_state.user_name}")
     st.divider()
 
@@ -873,112 +907,103 @@ else:
             else:
                 st.info("No Jurisdiction data")
 
-       # ====================== ANIMATED TIME SERIES (Highest → Lowest every month) ======================
-st.markdown("---")
-st.markdown('<p class="section-header">🎬 Animated Monthly Cases by Station (Highest → Lowest every month)</p>', unsafe_allow_html=True)
+        # ====================== ANIMATED TIME SERIES ======================
+        st.markdown("---")
+        st.markdown('<p class="section-header">🎬 Animated Monthly Cases by Station (Highest → Lowest every month)</p>', unsafe_allow_html=True)
 
-if filtered_df.empty or 'STATION' not in filtered_df.columns or 'DATE' not in filtered_df.columns:
-    st.warning("Not enough data for animation.")
-else:
-    anim_df = filtered_df.dropna(subset=['DATE', 'STATION']).copy()
+        if filtered_df.empty or 'STATION' not in filtered_df.columns or 'DATE' not in filtered_df.columns:
+            st.warning("Not enough data for animation.")
+        else:
+            anim_df = filtered_df.dropna(subset=['DATE', 'STATION']).copy()
 
-    col_anim1, col_anim2 = st.columns([2, 2])
-    with col_anim1:
-        top_n_anim = st.slider("Show Top N stations", 5, 25, 12, key="anim_topn")
-    with col_anim2:
-        anim_speed = st.select_slider("Animation Speed", options=["Very Slow", "Slow", "Normal", "Fast"], value="Slow", key="anim_speed")
+            col_anim1, col_anim2 = st.columns([2, 2])
+            with col_anim1:
+                top_n_anim = st.slider("Show Top N stations", 5, 25, 12, key="anim_topn")
+            with col_anim2:
+                anim_speed = st.select_slider("Animation Speed", options=["Very Slow", "Slow", "Normal", "Fast"], value="Slow", key="anim_speed")
 
-    speed_map = {"Very Slow": 1800, "Slow": 1400, "Normal": 1000, "Fast": 700}
-    frame_duration = speed_map[anim_speed]
-    transition_duration = int(frame_duration * 0.55)
+            speed_map = {"Very Slow": 1800, "Slow": 1400, "Normal": 1000, "Fast": 700}
+            frame_duration = speed_map[anim_speed]
+            transition_duration = int(frame_duration * 0.55)
 
-    # Calculate monthly cases
-    monthly = anim_df.groupby(['STATION', pd.Grouper(key='DATE', freq='MS')]).size().reset_index(name='Value')
-    monthly['Month'] = monthly['DATE'].dt.strftime('%b %Y')
-    monthly = monthly.sort_values('DATE')
+            monthly = anim_df.groupby(['STATION', pd.Grouper(key='DATE', freq='MS')]).size().reset_index(name='Value')
+            monthly['Month'] = monthly['DATE'].dt.strftime('%b %Y')
+            monthly = monthly.sort_values('DATE')
 
-    # Keep only Top N stations based on overall cases (to avoid too many stations)
-    top_stations = (
-        monthly.groupby('STATION')['Value']
-        .sum()
-        .sort_values(ascending=False)
-        .head(top_n_anim)
-        .index
-        .tolist()
-    )
-    monthly = monthly[monthly['STATION'].isin(top_stations)]
-
-    # ========== IMPORTANT: Sort by Value (Highest → Lowest) for every month ==========
-    monthly = monthly.sort_values(['DATE', 'Value'], ascending=[True, False])
-
-    if monthly.empty:
-        st.info("No data available for animation.")
-    else:
-        fig_anim = px.bar(
-            monthly,
-            x='STATION',
-            y='Value',
-            color='Value',
-            animation_frame='Month',
-            animation_group='STATION',
-            range_y=[0, monthly['Value'].max() * 1.18],
-            color_continuous_scale='RdYlGn_r',
-            labels={'Value': 'Cases', 'STATION': 'Station'},
-            title="Monthly Cases by Station — Highest → Lowest (changes every month)",
-            text='Value'
-        )
-
-        fig_anim.update_traces(texttemplate='%{text:,}', textposition='outside', cliponaxis=False)
-        
-        fig_anim.update_layout(
-            height=600,
-            xaxis_tickangle=-45,
-            coloraxis_showscale=False,
-            margin=dict(t=70, b=120),
-            title_x=0.5,
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            font_color='#0d1b2a',
-            # This helps keep the order looking better
-            xaxis={'categoryorder': 'total descending'}
-        )
-
-        # Safe animation speed setting
-        try:
-            if (hasattr(fig_anim.layout, "updatemenus") and 
-                fig_anim.layout.updatemenus and 
-                len(fig_anim.layout.updatemenus) > 0 and
-                fig_anim.layout.updatemenus[0].buttons and
-                len(fig_anim.layout.updatemenus[0].buttons) > 0):
-                
-                fig_anim.layout.updatemenus[0].buttons[0].args[1]['frame']['duration'] = frame_duration
-                fig_anim.layout.updatemenus[0].buttons[0].args[1]['transition']['duration'] = transition_duration
-        except Exception:
-            pass
-
-        st.plotly_chart(fig_anim, use_container_width=True, config={'displaylogo': False})
-        st.caption(f"Current speed: **{anim_speed}** • Bars re-ordered Highest → Lowest every month")
-
-        # Download button
-        st.markdown("")
-        col_dl1, col_dl2, col_dl3 = st.columns([1, 2, 1])
-        with col_dl2:
-            html_bytes = fig_anim.to_html(
-                full_html=True, 
-                include_plotlyjs='cdn', 
-                config={'displaylogo': False, 'responsive': True}
-            ).encode('utf-8')
-            
-            st.download_button(
-                label="⬇️ Download Animation (Interactive HTML)",
-                data=html_bytes,
-                file_name=f"Station_Animation_Cases_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.html",
-                mime="text/html",
-                type="primary",
-                use_container_width=True
+            top_stations = (
+                monthly.groupby('STATION')['Value']
+                .sum()
+                .sort_values(ascending=False)
+                .head(top_n_anim)
+                .index
+                .tolist()
             )
+            monthly = monthly[monthly['STATION'].isin(top_stations)]
+            monthly = monthly.sort_values(['DATE', 'Value'], ascending=[True, False])
 
-        
+            if monthly.empty:
+                st.info("No data available for animation.")
+            else:
+                fig_anim = px.bar(
+                    monthly,
+                    x='STATION',
+                    y='Value',
+                    color='Value',
+                    animation_frame='Month',
+                    animation_group='STATION',
+                    range_y=[0, monthly['Value'].max() * 1.18],
+                    color_continuous_scale='RdYlGn_r',
+                    labels={'Value': 'Cases', 'STATION': 'Station'},
+                    title="Monthly Cases by Station — Highest → Lowest (changes every month)",
+                    text='Value'
+                )
+
+                fig_anim.update_traces(texttemplate='%{text:,}', textposition='outside', cliponaxis=False)
+                
+                fig_anim.update_layout(
+                    height=600,
+                    xaxis_tickangle=-45,
+                    coloraxis_showscale=False,
+                    margin=dict(t=70, b=120),
+                    title_x=0.5,
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    font_color='#0d1b2a',
+                    xaxis={'categoryorder': 'total descending'}
+                )
+
+                try:
+                    if (hasattr(fig_anim.layout, "updatemenus") and 
+                        fig_anim.layout.updatemenus and 
+                        len(fig_anim.layout.updatemenus) > 0 and
+                        fig_anim.layout.updatemenus[0].buttons and
+                        len(fig_anim.layout.updatemenus[0].buttons) > 0):
+                        
+                        fig_anim.layout.updatemenus[0].buttons[0].args[1]['frame']['duration'] = frame_duration
+                        fig_anim.layout.updatemenus[0].buttons[0].args[1]['transition']['duration'] = transition_duration
+                except Exception:
+                    pass
+
+                st.plotly_chart(fig_anim, use_container_width=True, config={'displaylogo': False})
+                st.caption(f"Current speed: **{anim_speed}** • Bars re-ordered Highest → Lowest every month")
+
+                st.markdown("")
+                col_dl1, col_dl2, col_dl3 = st.columns([1, 2, 1])
+                with col_dl2:
+                    html_bytes = fig_anim.to_html(
+                        full_html=True, 
+                        include_plotlyjs='cdn', 
+                        config={'displaylogo': False, 'responsive': True}
+                    ).encode('utf-8')
+                    
+                    st.download_button(
+                        label="⬇️ Download Animation (Interactive HTML)",
+                        data=html_bytes,
+                        file_name=f"DRISHTI_Animation_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.html",
+                        mime="text/html",
+                        type="primary",
+                        use_container_width=True
+                    )
 
         # ====================== SUMMARY TABLES ======================
         st.markdown("---")
@@ -1029,7 +1054,7 @@ else:
                 st.download_button(
                     label="⬇️ Download Professional Excel Report",
                     data=output.getvalue(),
-                    file_name=f"Datalogger_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                    file_name=f"DRISHTI_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
                     use_container_width=True
@@ -1132,7 +1157,7 @@ else:
                 st.download_button(
                     label="⬇️ Download Forecast Report",
                     data=fout.getvalue(),
-                    file_name=f"Datalogger_Forecast_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                    file_name=f"DRISHTI_Forecast_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
                     use_container_width=True
@@ -1236,10 +1261,10 @@ else:
                 st.download_button(
                     label="⬇️ Download Map Filtered Report",
                     data=output.getvalue(),
-                    file_name=f"Map_Filtered_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                    file_name=f"DRISHTI_Map_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
                     use_container_width=True
                 )
 
-    st.caption("🚄 Safety Branch | Central Railway, Solapur Division")
+    st.caption("🚄 Data-Logger | Safety Branch | Central Railway, Solapur Division")
