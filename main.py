@@ -650,9 +650,9 @@ else:
 
         col_g1, col_g2 = st.columns([3, 2])
         with col_g1:
-            st.markdown('<p class="section-header">Top 15 Stations by FCOUNT</p>', unsafe_allow_html=True)
+            st.markdown('<p class="section-header">Top 15 Stations by Cases</p>', unsafe_allow_html=True)
             if not filtered_df.empty and 'STATION' in filtered_df.columns:
-                top15 = filtered_df.groupby('STATION')['FCOUNT'].sum().nlargest(15).reset_index()
+                top15 = filtered_df.groupby('STATION')['Cases'].sum().nlargest(15).reset_index()
                 fig = px.bar(top15, x='STATION', y='FCOUNT', text='FCOUNT', color='FCOUNT', color_continuous_scale='RdYlGn_r')
                 fig.update_layout(height=480, xaxis_tickangle=45)
                 st.plotly_chart(fig, use_container_width=True)
