@@ -492,24 +492,89 @@ SNT_ADSTE = {
     "BANL": "ADSTE/KWV-II (LC-34(DKY)-LUR)", "GANI": "ADSTE/KWV-II (LC-34(DKY)-LUR)",
 }
 
+# ------ Precompute a normalized (upper/no-space, HG-alias-collapsed) lookup
+# for each jurisdiction table once, instead of re-normalizing per row. ------
+def _normalize_key(k):
+    k2 = str(k).strip().upper().replace(" ", "")
+    if k2 in ["HGSTN", "HGA", "HG-A"]:
+        k2 = "HG"
+    if k2 == "AGDL":
+        k2 = "AGDl"
+    return k2
+
+def _build_norm_map(d):
+    out = {}
+    for k, v in d.items():
+        out[_normalize_key(k)] = v
+        out[str(k).strip().upper()] = v
+    return out
+
+_ENGG_NORM = _build_norm_map(ENGG_ADEN)
+_ELECT_G_NORM = _build_norm_map(ELECT_G_SSE)
+_ELECT_TRD_NORM = _build_norm_map(ELECT_TRD_SSE)
+_OPTG_NORM = _build_norm_map(OPERATING_TI)
+_SNT_NORM = _build_norm_map(SNT_ADSTE)
+
+
 def get_jurisdiction(station, department):
+    """Kept for reference / single-row use; vectorized path below is used for bulk data."""
     if pd.isna(station) or str(station).strip() == "":
         return "Unclassified"
-    stn = str(station).strip().upper().replace(" ", "")
-    if stn in ["HGSTN", "HGA", "HG-A"]:
-        stn = "HG"
-    if stn == "AGDL":
-        stn = "AGDl"
+    stn = _normalize_key(station)
     dept = str(department).strip().upper() if pd.notna(department) else ""
     if "OPTG" in dept or "OPERATING" in dept:
-        return OPERATING_TI.get(stn, OPERATING_TI.get(station, "Unclassified"))
+        return _OPTG_NORM.get(stn, "Unclassified")
     if "ENGG" in dept or "ENGINEERING" in dept or "ADEN" in dept:
-        return ENGG_ADEN.get(stn, ENGG_ADEN.get(station, "Unclassified"))
+        return _ENGG_NORM.get(stn, "Unclassified")
     if any(x in dept for x in ["TRD", "TRACTION", "OHE"]):
-        return ELECT_TRD_SSE.get(stn, ELECT_TRD_SSE.get(station, "Unclassified"))
+        return _ELECT_TRD_NORM.get(stn, "Unclassified")
     if any(x in dept for x in ["ELECT", "ELECTRICAL", "SSE/ELECT"]):
-        return ELECT_G_SSE.get(stn, ELECT_G_SSE.get(station, "Unclassified"))
-    return SNT_ADSTE.get(stn, SNT_ADSTE.get(station, "Unclassified"))
+        return _ELECT_G_NORM.get(stn, "Unclassified")
+    return _SNT_NORM.get(stn, "Unclassified")
+
+
+def get_jurisdiction_vectorized(df):
+    """
+    Vectorized replacement for df.apply(get_jurisdiction, axis=1).
+    Avoids per-row Python calls, which is the slow part on large sheets.
+    """
+    if 'STATION' not in df.columns or 'DEPARTMENT' not in df.columns:
+        return pd.Series("Unclassified", index=df.index)
+
+    stn_norm = df['STATION'].apply(_normalize_key)
+    dept_upper = df['DEPARTMENT'].astype(str).str.strip().str.upper().fillna("")
+
+    is_optg = dept_upper.str.contains("OPTG|OPERATING", regex=True, na=False)
+    is_engg = dept_upper.str.contains("ENGG|ENGINEERING|ADEN", regex=True, na=False)
+    is_trd = dept_upper.str.contains("TRD|TRACTION|OHE", regex=True, na=False)
+    is_elect = dept_upper.str.contains("ELECT|ELECTRICAL", regex=True, na=False)
+
+    result = stn_norm.map(_SNT_NORM).fillna("Unclassified")  # default branch
+    result = result.mask(is_elect, stn_norm.map(_ELECT_G_NORM).fillna("Unclassified"))
+    result = result.mask(is_trd, stn_norm.map(_ELECT_TRD_NORM).fillna("Unclassified"))
+    result = result.mask(is_engg, stn_norm.map(_ENGG_NORM).fillna("Unclassified"))
+    result = result.mask(is_optg, stn_norm.map(_OPTG_NORM).fillna("Unclassified"))
+    return result
+
+
+# ------ Precompute normalized station_coords lookup once (exact-match first,
+# no substring guessing at query time). ------
+_STATION_COORDS_NORM = {_normalize_key(k): v for k, v in station_coords.items()}
+
+
+def match_station_coords(station_name):
+    """
+    Exact match on the normalized code first. Only falls back to substring
+    matching (and only against the longest keys first) if no exact match
+    exists, to avoid short codes like 'MR' wrongly matching inside 'MRJ'.
+    """
+    norm = _normalize_key(station_name)
+    if norm in _STATION_COORDS_NORM:
+        return _STATION_COORDS_NORM[norm]
+    for key in sorted(_STATION_COORDS_NORM.keys(), key=len, reverse=True):
+        if key in norm:
+            return _STATION_COORDS_NORM[key]
+    return None
 
 # ====================== FORECASTING ENGINE ======================
 def get_global_month_index(df):
@@ -648,6 +713,67 @@ def forecast_by_group(df, group_col, how, horizon, top_n=10, full_index=None):
         rows.append(row)
     return pd.DataFrame(rows)
 
+# ====================== SHARED / DEDUPLICATED UI HELPERS ======================
+def compute_station_summary(df):
+    """Single source of truth for the STATION x Cases table, used in 3 places."""
+    if df.empty or 'STATION' not in df.columns:
+        return pd.DataFrame(columns=['STATION', 'Cases'])
+    return df.groupby('STATION').size().reset_index(name='Cases').sort_values('Cases', ascending=False)
+
+
+def render_station_summary_table(station_summary_df):
+    st.dataframe(
+        station_summary_df.style.format({"Cases": "{:,}"}).background_gradient(subset=['Cases'], cmap='YlOrRd'),
+        use_container_width=True,
+        hide_index=True
+    )
+
+
+def build_display_df(filtered_df):
+    display_df = filtered_df.copy()
+    if 'DATE' in display_df.columns:
+        display_df['DATE'] = display_df['DATE'].dt.date
+    preferred_order = ['DATE', 'STATION', 'DEPARTMENT', 'JURISDICTION', 'ERROR MAIN CATEGORY',
+                        'DL FAULT MESSAGE', 'REMARKS GIVEN BY S&T']
+    cols = [c for c in preferred_order if c in display_df.columns] + \
+           [c for c in display_df.columns if c not in preferred_order]
+    return display_df[cols], cols
+
+
+def render_detailed_records_section(filtered_df, extra_sheets=None, file_prefix="DRISHTI_Report", button_label="⬇️ Download Report", button_key=None):
+    """
+    Shared 'Detailed Records table + Excel export' block.
+    extra_sheets: list of (sheet_name, dataframe) tuples to add to the workbook.
+    Replaces 3 copies of this logic (Overview tab, Map tab, and formerly duplicated exports).
+    """
+    st.markdown('<p class="section-header">Detailed Records</p>', unsafe_allow_html=True)
+    if filtered_df.empty:
+        st.warning("No records found.")
+        return
+
+    display_df, cols = build_display_df(filtered_df)
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+    col_btn1, col_btn2, col_btn3 = st.columns([1, 3, 1])
+    with col_btn2:
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            write_styled_sheet(writer, display_df, 'Filtered_Records')
+            for sheet_name, sheet_df in (extra_sheets or []):
+                if sheet_df is not None and not sheet_df.empty:
+                    write_styled_sheet(writer, sheet_df, sheet_name)
+        output.seek(0)
+        st.download_button(
+            label=button_label,
+            data=output.getvalue(),
+            file_name=f"{file_prefix}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary",
+            use_container_width=True,
+            key=button_key
+        )
+
 # ====================== SESSION STATE ======================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -686,10 +812,13 @@ def load_data_from_gsheet():
         df = df.loc[:, ~df.columns.str.lower().str.replace('.', '', regex=False).str.contains(r'^(?:sl|sr)\s*no', regex=True)]
         if 'DATE' in df.columns:
             df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
+            n_bad_dates = int(df['DATE'].isna().sum())
+            if n_bad_dates > 0:
+                st.warning(f"⚠️ {n_bad_dates} row(s) have a missing/unparseable DATE and are excluded from date-based views.")
             df['MONTH'] = df['DATE'].dt.strftime('%B')
             df['YEAR_MONTH'] = df['DATE'].dt.to_period('M').astype(str)
         if 'STATION' in df.columns and 'DEPARTMENT' in df.columns:
-            df['JURISDICTION'] = df.apply(lambda row: get_jurisdiction(row['STATION'], row['DEPARTMENT']), axis=1)
+            df['JURISDICTION'] = get_jurisdiction_vectorized(df)
         else:
             df['JURISDICTION'] = "Unclassified"
         return df
@@ -812,6 +941,9 @@ else:
     if selected_months and 'MONTH' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['MONTH'].isin(selected_months)]
 
+    # ---- Computed ONCE and reused everywhere below (was recomputed 3x) ----
+    station_summary = compute_station_summary(filtered_df)
+
     cat_sum = pd.DataFrame()
     error_sum = pd.DataFrame()
     jur_sum = pd.DataFrame()
@@ -835,19 +967,11 @@ else:
         with c1:
             st.metric("Total Cases", f"{len(filtered_df):,}")
         with c2:
-            if not filtered_df.empty and 'STATION' in filtered_df.columns:
-                station_counts = filtered_df['STATION'].value_counts()
-                top_station = station_counts.index[0] if not station_counts.empty else "N/A"
-                st.metric("⚠️ Top Station", top_station)
-            else:
-                st.metric("⚠️ Top Station", "N/A")
+            top_station = station_summary.iloc[0]['STATION'] if not station_summary.empty else "N/A"
+            st.metric("⚠️ Top Station", top_station)
         with c3:
-            if not filtered_df.empty and 'STATION' in filtered_df.columns:
-                station_counts = filtered_df['STATION'].value_counts()
-                top_cases = int(station_counts.iloc[0]) if not station_counts.empty else 0
-                st.metric("Top Station Cases", f"{top_cases:,}")
-            else:
-                st.metric("Top Station Cases", "0")
+            top_cases = int(station_summary.iloc[0]['Cases']) if not station_summary.empty else 0
+            st.metric("Top Station Cases", f"{top_cases:,}")
         with c4:
             st.metric("Unique Stations", f"{filtered_df['STATION'].nunique() if 'STATION' in filtered_df.columns else 0}")
 
@@ -856,21 +980,15 @@ else:
         col_g1, col_g2 = st.columns([3, 2])
         with col_g1:
             st.markdown('<p class="section-header">Top 15 Stations by Cases</p>', unsafe_allow_html=True)
-            if not filtered_df.empty and 'STATION' in filtered_df.columns:
-                top15 = filtered_df['STATION'].value_counts().nlargest(15).reset_index()
-                top15.columns = ['STATION', 'Cases']
+            if not station_summary.empty:
+                top15 = station_summary.head(15).rename(columns={'STATION': 'STATION', 'Cases': 'Cases'})
                 fig = px.bar(top15, x='STATION', y='Cases', text='Cases', color='Cases', color_continuous_scale='RdYlGn_r')
                 fig.update_layout(height=480, xaxis_tickangle=45, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='#0d1b2a')
                 st.plotly_chart(fig, use_container_width=True)
         with col_g2:
             st.markdown('<p class="section-header">Station Summary</p>', unsafe_allow_html=True)
-            if not filtered_df.empty and 'STATION' in filtered_df.columns:
-                summary = filtered_df.groupby('STATION').size().reset_index(name='Cases').sort_values('Cases', ascending=False)
-                st.dataframe(
-                    summary.style.format({"Cases": "{:,}"}).background_gradient(subset=['Cases'], cmap='YlOrRd'),
-                    use_container_width=True,
-                    hide_index=True
-                )
+            if not station_summary.empty:
+                render_station_summary_table(station_summary)
 
         st.markdown("---")
         st.markdown('<p class="section-header">📊 Distribution Charts</p>', unsafe_allow_html=True)
@@ -959,7 +1077,7 @@ else:
                 )
 
                 fig_anim.update_traces(texttemplate='%{text:,}', textposition='outside', cliponaxis=False)
-                
+
                 fig_anim.update_layout(
                     height=600,
                     xaxis_tickangle=-45,
@@ -973,16 +1091,16 @@ else:
                 )
 
                 try:
-                    if (hasattr(fig_anim.layout, "updatemenus") and 
-                        fig_anim.layout.updatemenus and 
+                    if (hasattr(fig_anim.layout, "updatemenus") and
+                        fig_anim.layout.updatemenus and
                         len(fig_anim.layout.updatemenus) > 0 and
                         fig_anim.layout.updatemenus[0].buttons and
                         len(fig_anim.layout.updatemenus[0].buttons) > 0):
-                        
+
                         fig_anim.layout.updatemenus[0].buttons[0].args[1]['frame']['duration'] = frame_duration
                         fig_anim.layout.updatemenus[0].buttons[0].args[1]['transition']['duration'] = transition_duration
-                except Exception:
-                    pass
+                except Exception as anim_err:
+                    st.caption(f"(Animation speed control could not be applied: {anim_err})")
 
                 st.plotly_chart(fig_anim, use_container_width=True, config={'displaylogo': False})
                 st.caption(f"Current speed: **{anim_speed}** • Bars re-ordered Highest → Lowest every month")
@@ -991,18 +1109,19 @@ else:
                 col_dl1, col_dl2, col_dl3 = st.columns([1, 2, 1])
                 with col_dl2:
                     html_bytes = fig_anim.to_html(
-                        full_html=True, 
-                        include_plotlyjs='cdn', 
+                        full_html=True,
+                        include_plotlyjs='cdn',
                         config={'displaylogo': False, 'responsive': True}
                     ).encode('utf-8')
-                    
+
                     st.download_button(
                         label="⬇️ Download Animation (Interactive HTML)",
                         data=html_bytes,
                         file_name=f"DRISHTI_Animation_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.html",
                         mime="text/html",
                         type="primary",
-                        use_container_width=True
+                        use_container_width=True,
+                        key="anim_download"
                     )
 
         # ====================== SUMMARY TABLES ======================
@@ -1021,44 +1140,20 @@ else:
                 st.markdown('<p class="section-header">JURISDICTION</p>', unsafe_allow_html=True)
                 st.dataframe(jur_sum.style.format({"Cases": "{:,}"}), use_container_width=True, hide_index=True)
 
-        # Detailed Records
+        # Detailed Records + Export (shared helper — was duplicated)
         st.markdown("---")
-        st.markdown('<p class="section-header">Detailed Records</p>', unsafe_allow_html=True)
-        if filtered_df.empty:
-            st.warning("No records found.")
-        else:
-            display_df = filtered_df.copy()
-            if 'DATE' in display_df.columns:
-                display_df['DATE'] = display_df['DATE'].dt.date
-            preferred_order = ['DATE', 'STATION', 'DEPARTMENT', 'JURISDICTION', 'ERROR MAIN CATEGORY',
-                               'DL FAULT MESSAGE', 'REMARKS GIVEN BY S&T']
-            cols = [c for c in preferred_order if c in display_df.columns] + [c for c in display_df.columns if c not in preferred_order]
-            st.dataframe(display_df[cols], use_container_width=True, hide_index=True)
-
-            st.markdown("---")
-            col_btn1, col_btn2, col_btn3 = st.columns([1, 3, 1])
-            with col_btn2:
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    write_styled_sheet(writer, display_df[cols], 'Filtered_Records')
-                    if 'STATION' in filtered_df.columns:
-                        station_summary = filtered_df.groupby('STATION').size().reset_index(name='Cases').sort_values('Cases', ascending=False)
-                        write_styled_sheet(writer, station_summary, 'Station_Summary')
-                    if not error_sum.empty:
-                        write_styled_sheet(writer, error_sum, 'Error_Summary')
-                    if not cat_sum.empty:
-                        write_styled_sheet(writer, cat_sum, 'Category_Summary')
-                    if not jur_sum.empty:
-                        write_styled_sheet(writer, jur_sum, 'Jurisdiction_Summary')
-                output.seek(0)
-                st.download_button(
-                    label="⬇️ Download Professional Excel Report",
-                    data=output.getvalue(),
-                    file_name=f"DRISHTI_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    type="primary",
-                    use_container_width=True
-                )
+        render_detailed_records_section(
+            filtered_df,
+            extra_sheets=[
+                ('Station_Summary', station_summary),
+                ('Error_Summary', error_sum),
+                ('Category_Summary', cat_sum),
+                ('Jurisdiction_Summary', jur_sum),
+            ],
+            file_prefix="DRISHTI_Report",
+            button_label="⬇️ Download Professional Excel Report",
+            button_key="overview_download"
+        )
 
     # ====================== FORECAST TAB ======================
     with tab_forecast:
@@ -1160,7 +1255,8 @@ else:
                     file_name=f"DRISHTI_Forecast_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
-                    use_container_width=True
+                    use_container_width=True,
+                    key="forecast_download"
                 )
 
     # ====================== MAP TAB ======================
@@ -1182,17 +1278,11 @@ else:
             if filtered_df.empty or 'STATION' not in filtered_df.columns:
                 st.warning("No data available.")
             else:
-                map_agg = filtered_df.groupby('STATION').size().reset_index(name='Cases')
                 map_data = []
-                for _, row in map_agg.iterrows():
-                    station_name = str(row['STATION']).strip().upper()
-                    best_match = None
-                    for name, info in station_coords.items():
-                        if name.upper() == station_name or name.upper() in station_name:
-                            best_match = info
-                            break
-                    if best_match:
-                        map_data.append({'STATION': row['STATION'], 'Cases': row['Cases'], 'lat': best_match['lat'], 'lon': best_match['lon']})
+                for _, row in station_summary.iterrows():
+                    coords = match_station_coords(row['STATION'])
+                    if coords:
+                        map_data.append({'STATION': row['STATION'], 'Cases': row['Cases'], 'lat': coords['lat'], 'lon': coords['lon']})
                 map_df = pd.DataFrame(map_data)
 
                 if not map_df.empty:
@@ -1211,7 +1301,10 @@ else:
                             radius = 8 + min(cases / 10, 25)
                             folium.CircleMarker(location=[row['lat'], row['lon']], radius=radius, popup=f"<h4>{row['STATION']}</h4><b>Total Cases:</b> {cases:,}", tooltip=f"{row['STATION']} ({cases:,})", color=color, fill=True, fill_color=color, fill_opacity=0.85, weight=2).add_to(m)
 
-                        map_key = f"folium_map_{len(filtered_df)}"
+                        # Key based on the actual station set + selection, not just row count,
+                        # so the map correctly remounts when the filter changes but row count
+                        # happens to stay the same.
+                        map_key = "folium_map_" + str(hash((tuple(sorted(map_df['STATION'].tolist())), st.session_state.map_selected_station)))
                         map_return = st_folium(m, width=950, height=680, key=map_key, returned_objects=["last_object_clicked"])
 
                         if map_return and map_return.get("last_object_clicked"):
@@ -1225,46 +1318,20 @@ else:
 
         with col_m2:
             st.subheader("Station Summary")
-            if not filtered_df.empty and 'STATION' in filtered_df.columns:
-                summary = filtered_df.groupby('STATION').size().reset_index(name='Cases').sort_values('Cases', ascending=False)
-                st.dataframe(
-                    summary.style.format({"Cases": "{:,}"}).background_gradient(subset=['Cases'], cmap='YlOrRd'),
-                    use_container_width=True,
-                    hide_index=True
-                )
+            if not station_summary.empty:
+                render_station_summary_table(station_summary)
             st.markdown("---")
             st.subheader("Jurisdiction Summary")
             if not jur_sum.empty:
                 st.dataframe(jur_sum.style.format({"Cases": "{:,}"}), use_container_width=True, hide_index=True)
 
         st.markdown("---")
-        st.subheader("Detailed Records")
-        if filtered_df.empty:
-            st.warning("No records found.")
-        else:
-            display_df = filtered_df.copy()
-            if 'DATE' in display_df.columns:
-                display_df['DATE'] = display_df['DATE'].dt.date
-            preferred_order = ['DATE', 'STATION', 'DEPARTMENT', 'JURISDICTION', 'ERROR MAIN CATEGORY', 'DL FAULT MESSAGE', 'REMARKS GIVEN BY S&T']
-            cols = [c for c in preferred_order if c in display_df.columns] + [c for c in display_df.columns if c not in preferred_order]
-            st.dataframe(display_df[cols], use_container_width=True, hide_index=True)
-
-            st.markdown("---")
-            col_btn1, col_btn2, col_btn3 = st.columns([1, 3, 1])
-            with col_btn2:
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    write_styled_sheet(writer, display_df[cols], 'Filtered_Records')
-                    if not jur_sum.empty:
-                        write_styled_sheet(writer, jur_sum, 'Jurisdiction_Summary')
-                output.seek(0)
-                st.download_button(
-                    label="⬇️ Download Map Filtered Report",
-                    data=output.getvalue(),
-                    file_name=f"DRISHTI_Map_Report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    type="primary",
-                    use_container_width=True
-                )
+        render_detailed_records_section(
+            filtered_df,
+            extra_sheets=[('Jurisdiction_Summary', jur_sum)],
+            file_prefix="DRISHTI_Map_Report",
+            button_label="⬇️ Download Map Filtered Report",
+            button_key="map_download"
+        )
 
     st.caption("🚄 Data-Logger | Safety Branch | Central Railway, Solapur Division")
