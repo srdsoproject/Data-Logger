@@ -1,25 +1,4 @@
-"""
-Data-Logger | Central Railway, Solapur Division, Safety Branch
 
-Same app, layout and features as before, with bug fixes and OFFLINE support.
-
-OFFLINE SUPPORT
-* Every successful Google Sheets load saves a snapshot in .offline_cache/.
-  If the internet / Google is unreachable the app falls back to it automatically
-  ("Work offline" in the sidebar forces this).
-* Logo and fonts are read from ./assets (logo is downloaded once and kept;
-  put Orbitron.woff2 / Rajdhani.woff2 in ./assets to avoid Google Fonts).
-* Map tiles need internet; offline the map shows station markers only.
-* "Offline dashboard (HTML)" exports one self-contained file that opens in any
-  browser with no server and no internet.
-* Streamlit itself needs a running Python server: for a PC with no internet run
-  `streamlit run data_logger_app.py` there (data comes from the snapshot).
-
-Optional hashed passwords (plain-text still works). Run once, paste into secrets.toml:
-    import hashlib, os
-    salt = os.urandom(16); it = 200_000
-    print(f"pbkdf2_sha256${it}${salt.hex()}$" + hashlib.pbkdf2_hmac('sha256', b'PASSWORD', salt, it).hex())
-"""
 import base64
 import hashlib
 import hmac
@@ -349,6 +328,7 @@ station_coords = {
     "HHD": {"lat": 17.352700945672176, "lon": 76.64674999614954},
     "GUR": {"lat": 17.340847607132325, "lon": 76.5895995384797},
     "KUI": {"lat": 17.357481126320312, "lon": 76.47050033971526},
+    "GDGN": {"lat": 17.336448211586035, "lon": 76.53065519174201},  
     "DUD": {"lat": 17.36262542350625, "lon": 76.38023255381961},
     "NGS": {"lat": 17.429201164736277, "lon": 76.18296853848099},
     "BOT": {"lat": 17.395116057678774, "lon": 76.25531964887394},
