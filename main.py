@@ -42,10 +42,9 @@ st.markdown("""
     background: #ffffff;
     color: #0d1b2a;
     font-family: 'Rajdhani', sans-serif;
-    font-size: 1.25rem;
 }
 
-html, body, .stMarkdown p, .stMarkdown li, .stAlert p, .stAlert div {
+.stMarkdown p, .stMarkdown li, .stAlert p {
     font-size: 1.25rem !important;
     font-weight: 600;
 }
