@@ -44,16 +44,7 @@ st.markdown("""
     font-family: 'Rajdhani', sans-serif;
 }
 
-.stMarkdown p, .stMarkdown li, .stAlert p {
-    font-size: 1.25rem !important;
-    font-weight: 600;
-}
-[data-testid="stWidgetLabel"] p { font-size: 1.2rem !important; font-weight: 700 !important; color: #01579b !important; }
-[data-testid="stCaptionContainer"] p, .stCaption { font-size: 1.1rem !important; }
-.stMultiSelect span, .stSelectbox div, .stDateInput input, .stNumberInput input { font-size: 1.15rem !important; }
-.stTabs [data-baseweb="tab"] { font-size: 1.35rem !important; }
-.stButton > button, .stDownloadButton > button { font-size: 1.1rem !important; }
-h1, h2, h3, [data-testid="stSubheader"] { font-size: 1.9rem !important; }
+
 
 .brand-line {
     font-family: 'Rajdhani', sans-serif;
