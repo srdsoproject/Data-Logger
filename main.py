@@ -39,7 +39,7 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap');
 
 .stApp {
-    background: linear-gradient(135deg, #e0f7fa 0%, #b3e5fc 40%, #e1f5fe 100%);
+    background: #ffffff;
     color: #0d1b2a;
     font-family: 'Rajdhani', sans-serif;
 }
@@ -154,7 +154,7 @@ div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
 }
 
 section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #e0f7fa 0%, #b3e5fc 100%);
+    background: #ffffff;
     border-right: 1px solid #81d4fa;
 }
 
@@ -191,7 +191,7 @@ section[data-testid="stSidebar"] .stMarkdown h2 {
     height: 8px;
 }
 ::-webkit-scrollbar-track {
-    background: #e0f7fa;
+    background: #ffffff;
 }
 ::-webkit-scrollbar-thumb {
     background: #0288d1;
