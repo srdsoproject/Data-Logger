@@ -55,7 +55,6 @@ html, body, .stMarkdown p, .stMarkdown li, .stAlert p, .stAlert div {
 .stTabs [data-baseweb="tab"] { font-size: 1.35rem !important; }
 .stButton > button, .stDownloadButton > button { font-size: 1.1rem !important; }
 h1, h2, h3, [data-testid="stSubheader"] { font-size: 1.9rem !important; }
-[data-testid="stDataFrame"] { font-size: 1.2rem; zoom: 1.2; }
 
 .brand-line {
     font-family: 'Rajdhani', sans-serif;
