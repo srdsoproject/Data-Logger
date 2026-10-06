@@ -42,7 +42,20 @@ st.markdown("""
     background: #ffffff;
     color: #0d1b2a;
     font-family: 'Rajdhani', sans-serif;
+    font-size: 1.25rem;
 }
+
+html, body, .stMarkdown p, .stMarkdown li, .stAlert p, .stAlert div {
+    font-size: 1.25rem !important;
+    font-weight: 600;
+}
+[data-testid="stWidgetLabel"] p { font-size: 1.2rem !important; font-weight: 700 !important; color: #01579b !important; }
+[data-testid="stCaptionContainer"] p, .stCaption { font-size: 1.1rem !important; }
+.stMultiSelect span, .stSelectbox div, .stDateInput input, .stNumberInput input { font-size: 1.15rem !important; }
+.stTabs [data-baseweb="tab"] { font-size: 1.35rem !important; }
+.stButton > button, .stDownloadButton > button { font-size: 1.1rem !important; }
+h1, h2, h3, [data-testid="stSubheader"] { font-size: 1.9rem !important; }
+[data-testid="stDataFrame"] { font-size: 1.2rem; zoom: 1.2; }
 
 .brand-line {
     font-family: 'Rajdhani', sans-serif;
@@ -104,13 +117,13 @@ div[data-testid="stMetric"]:hover {
 div[data-testid="stMetric"] label {
     color: #0277bd !important;
     font-weight: 600 !important;
-    font-size: 0.95rem !important;
+    font-size: 1.25rem !important;
 }
 
 div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
     color: #01579b !important;
     font-family: 'Orbitron', sans-serif !important;
-    font-size: 1.8rem !important;
+    font-size: 2.3rem !important;
 }
 
 .stTabs [data-baseweb="tab-list"] {
