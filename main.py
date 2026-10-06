@@ -182,23 +182,6 @@ section[data-testid="stSidebar"] .stMarkdown h2 {
     border: 1px solid #81d4fa;
 }
 
-.watermark {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    opacity: 0.07;
-    z-index: 0;
-    pointer-events: none;
-    width: 520px;
-    max-width: 70vw;
-}
-
-.watermark img {
-    width: 100%;
-    height: auto;
-}
-
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -1144,13 +1127,6 @@ def refresh_data():
 if not st.session_state.logged_in:
     login_page()
 else:
-    # Watermark
-    st.markdown(f"""
-    <div class="watermark">
-        <img src="{IR_LOGO_URL}" alt="Central Railway Logo Watermark">
-    </div>
-    """, unsafe_allow_html=True)
-
     col1, col2, col3 = st.columns([3, 3, 1])
     with col2:
         st.image(IR_LOGO_URL, width=220)
